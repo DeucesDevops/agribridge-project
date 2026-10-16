@@ -4,11 +4,21 @@ These images illustrate the proposed kOps deployment and local Docker environmen
 
 | Diagram | Scope |
 | --- | --- |
-| [Docker architecture](01-docker-architecture.png) | Local Compose stack, same-origin Nginx routing, API dependencies, persistent PostgreSQL storage, and image builds. |
-| [AWS architecture](02-aws-architecture.png) | Three availability zones, public load balancing, private EC2 cluster nodes, managed data services, and supporting AWS services. |
-| [Kubernetes cluster](03-kubernetes-cluster.png) | Application Services and Deployments, separate control plane, instance groups, scaling, and runtime configuration. |
-| [Delivery pipeline](04-delivery-pipeline.png) | Required application checks, image publishing and promotion, Helm deployment, and Terraform/kOps infrastructure lifecycle. |
-| [Runtime operations](05-runtime-operations.png) | Secret delivery, health checks, metrics, logs, alerts, and independent recovery procedures. |
+| [Docker architecture](docs/architecture/01-docker-architecture.png) | Local Compose stack, same-origin Nginx routing, API dependencies, persistent PostgreSQL storage, and image builds. |
+| [AWS architecture](docs/architecture/02-aws-architecture.png) | Three availability zones, public load balancing, private EC2 cluster nodes, managed data services, and supporting AWS services. |
+| [Kubernetes cluster](docs/architecture/03-kubernetes-cluster.png) | Application Services and Deployments, separate control plane, instance groups, scaling, and runtime configuration. |
+| [Delivery pipeline](docs/architecture/04-delivery-pipeline.png) | Required application checks, image publishing and promotion, Helm deployment, and Terraform/kOps infrastructure lifecycle. |
+| [Runtime operations](docs/architecture/05-runtime-operations.png) | Secret delivery, health checks, metrics, logs, alerts, and independent recovery procedures. |
+
+![Docker architecture](docs/architecture/01-docker-architecture.png)
+
+![AWS architecture](docs/architecture/02-aws-architecture.png)
+
+![Kubernetes cluster](docs/architecture/03-kubernetes-cluster.png)
+
+![Delivery pipeline](docs/architecture/04-delivery-pipeline.png)
+
+![Runtime operations](docs/architecture/05-runtime-operations.png)
 
 ## Design assumptions
 
@@ -36,4 +46,4 @@ The component names, routes, ports, runtime behavior, and required checks were c
 - [kOps addons](https://kops.sigs.k8s.io/addons/)
 - [kOps etcd recovery](https://kops.sigs.k8s.io/operations/etcd_backup_restore_encryption/)
 
-Images were created using the built-in image generation tool. The full [prompt set](image-prompts.md) is saved alongside them for reproducibility and future edits.
+Images were created using the built-in image generation tool. The full [prompt set](docs/architecture/image-prompts.md) is saved alongside them for reproducibility and future edits.
