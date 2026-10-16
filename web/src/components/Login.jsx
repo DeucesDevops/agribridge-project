@@ -10,7 +10,6 @@ const DEMO = [
   { label: 'Buyer (Sahel Mills)', email: 'procurement@sahelmills.example' },
   { label: 'Field agent (Ibadan)', email: 'agent@agribridge.example' },
 ];
-const DEMO_PASSWORD = 'HarvestMonday2025!';
 
 export default function Login({ onSignedIn }) {
   const [email, setEmail] = useState('');
@@ -34,7 +33,7 @@ export default function Login({ onSignedIn }) {
 
   function useDemo(demoEmail) {
     setEmail(demoEmail);
-    setPassword(DEMO_PASSWORD);
+    setPassword('');
     setError(null);
   }
 
@@ -86,7 +85,7 @@ export default function Login({ onSignedIn }) {
 
         <div className="demo-creds">
           <strong>Demo accounts</strong>
-          <code>password: {DEMO_PASSWORD}</code>
+          <p>Select an account, then enter your configured demo password.</p>
           <div className="actions" style={{ marginTop: '.5rem' }}>
             {DEMO.map((d) => (
               <button

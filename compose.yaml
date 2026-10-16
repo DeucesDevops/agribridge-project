@@ -1,0 +1,115 @@
+name: agribridge
+
+services:
+  postgres:
+    image: postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    environment:
+      POSTGRES_DB: agribridge
+      POSTGRES_USER: agribridge
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Run scripts/local.sh up first}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U agribridge -d agribridge']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run scripts/local.sh up first}
+    # Supply password over stdin instead of placing it in process arguments.
+    command:
+      - sh
+      - -c
+      - |
+        exec redis-server - <<EOF
+        requirepass $${REDIS_PASSWORD}
+        save ""
+        appendonly no
+        EOF
+    user: redis
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    image: agribridge-api:${IMAGE_TAG:-local}
+    build:
+      context: ./api
+      target: runtime
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+        IMAGE_TAG: ${IMAGE_TAG:-local}
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      LOG_LEVEL: info
+      TRUST_PROXY: 'true'
+      SHUTDOWN_GRACE_MS: '10000'
+      PGHOST: postgres
+      PGPORT: '5432'
+      PGDATABASE: agribridge
+      PGUSER: agribridge
+      PGPASSWORD: ${PGPASSWORD:?Run scripts/local.sh up first}
+      PGSSL: 'false'
+      PG_POOL_MAX: '10'
+      PG_POOL_MIN: '0'
+      PG_CONNECT_TIMEOUT_MS: '5000'
+      PG_IDLE_TIMEOUT_MS: '30000'
+      PG_STATEMENT_TIMEOUT_MS: '10000'
+      REDIS_ENABLED: 'true'
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Run scripts/local.sh up first}@redis:6379
+      REDIS_REQUIRED: 'false'
+      CACHE_TTL_SECONDS: '30'
+      JWT_SECRET: ${JWT_SECRET:?Run scripts/local.sh up first}
+      COOKIE_SECURE: 'false'
+      COOKIE_NAME: agribridge_session
+      TOKEN_TTL_SECONDS: '28800'
+      BCRYPT_ROUNDS: '12'
+      RUN_MIGRATIONS: 'true'
+      SEED_DEMO_DATA: 'true'
+      SEED_PASSWORD: ${SEED_PASSWORD:?Run scripts/local.sh up first}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  web:
+    image: agribridge-web:${IMAGE_TAG:-local}
+    build:
+      context: ./web
+      target: runtime
+    ports:
+      - '127.0.0.1:${WEB_PORT:-8081}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, --spider, 'http://127.0.0.1:8080/']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
