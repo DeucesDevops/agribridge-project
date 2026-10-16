@@ -1,5 +1,7 @@
 # AgriBridge architecture diagrams
 
+[Repository structure](docs/repository-structure.md) · [Local development](docs/local-development.md)
+
 These images illustrate the proposed kOps deployment and local Docker environment. They do not describe infrastructure that has already been deployed.
 
 | Diagram | Scope |
