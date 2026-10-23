@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: agribridge
+data:
+  NODE_ENV: production
+  PORT: "3000"
+  LOG_LEVEL: info
+  TRUST_PROXY: "true"
+  SHUTDOWN_GRACE_MS: "10000"
+  PGHOST: REPLACE_RDS_ENDPOINT
+  PGPORT: "5432"
+  PGDATABASE: agribridge
+  PGUSER: agribridge
+  PGSSL: "true"
+  PG_POOL_MAX: "10"
+  PG_POOL_MIN: "0"
+  PG_CONNECT_TIMEOUT_MS: "5000"
+  PG_IDLE_TIMEOUT_MS: "30000"
+  PG_STATEMENT_TIMEOUT_MS: "10000"
+  # Disabled initially: the current Redis client can wait indefinitely on
+  # connection retries during startup. Enable after verifying connectivity.
+  REDIS_ENABLED: "false"
+  REDIS_REQUIRED: "false"
+  CACHE_TTL_SECONDS: "30"
+  COOKIE_SECURE: "true"
+  COOKIE_NAME: agribridge_session
+  TOKEN_TTL_SECONDS: "28800"
+  BCRYPT_ROUNDS: "12"
+  # Run the migration Job before rolling out the API.
+  RUN_MIGRATIONS: "false"
+  SEED_DEMO_DATA: "false"

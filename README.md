@@ -1,6 +1,10 @@
 # AgriBridge architecture diagrams
 
-[Repository structure](docs/repository-structure.md) · [Local development](docs/local-development.md)
+[Repository structure](docs/repository-structure.md) · [Local development](docs/local-development.md) · [Plain Kubernetes manifests](kops/README.md)
+
+Application Kubernetes YAML now lives under `kops/`; Helm is deferred. The diagrams
+below retain the earlier Helm proposal. See the manifest guide for current files,
+required environment values and staged deployment commands. No cluster has been deployed.
 
 These images illustrate the proposed kOps deployment and local Docker environment. They do not describe infrastructure that has already been deployed.
 
