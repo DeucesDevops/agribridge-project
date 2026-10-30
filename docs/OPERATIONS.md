@@ -196,7 +196,27 @@ Staging accounts: `amina.yusuf@example.ng` (farmer),
 `SEED_PASSWORD` from `agribridge-staging/runtime` in Secrets Manager. It is never
 embedded in the login page, printed by the seed command, or committed to Git.
 
+Run this only in your own private terminal to display the current staging password:
+
+```sh
+aws secretsmanager get-secret-value --region us-east-1 \
+  --secret-id agribridge-staging/runtime --query SecretString --output text \
+  | jq -r .SEED_PASSWORD
+```
+
 ## Health, logs, and metrics
+
+Operator credentials exported during provisioning expire. With an authenticated
+AWS operator session, refresh them when needed:
+
+```sh
+export KOPS_STATE_STORE=s3://kops-state-607
+kops export kubeconfig k8s.agribridge.deuces.dev --admin=24h --kubeconfig .runtime/kubeconfig
+export KUBECONFIG="$PWD/.runtime/kubeconfig"
+```
+
+Run each port-forward in its own terminal and keep it running while using the
+corresponding local browser URL:
 
 ```sh
 export KUBECONFIG="$PWD/.runtime/kubeconfig"
@@ -206,7 +226,17 @@ kubectl -n agribridge-staging exec deploy/agribridge-api -- node -e \
 kubectl -n monitoring port-forward svc/monitoring-grafana 3001:80
 # Grafana at http://localhost:3001 (admin password is in the monitoring-grafana Secret).
 kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090:9090
+kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-alertmanager 9093:9093
 aws logs tail /agribridge/containers --region us-east-1 --since 10m
+```
+
+Open Grafana at `http://localhost:3001`, Prometheus at `http://localhost:9090` and
+Alertmanager at `http://localhost:9093`. Grafana's username is `admin`. Display its
+generated password only in your own private terminal:
+
+```sh
+kubectl -n monitoring get secret monitoring-grafana -o jsonpath='{.data.admin-password}' \
+  | python3 -c 'import base64,sys; print(base64.b64decode(sys.stdin.read()).decode())'
 ```
 
 `/healthz` checks the process, not PostgreSQL; using the DB for liveness would restart
