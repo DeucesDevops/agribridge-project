@@ -21,7 +21,7 @@ jobs:
           POSTGRES_DB: agribridge_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U agribridge'
+          --health-cmd "pg_isready -U agribridge"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       PGHOST: localhost
@@ -61,7 +61,7 @@ jobs:
             web/coverage/
       - name: Summarize JUnit results
         if: always()
-        run: python3 scripts/test-summary.py >> "$GITHUB_STEP_SUMMARY"
+        run: if [ -f scripts/test-summary.py ]; then python3 scripts/test-summary.py >> "$GITHUB_STEP_SUMMARY"; fi
   staging:
     if: github.event_name != 'pull_request'
     needs: checks
