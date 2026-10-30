@@ -1,6 +1,6 @@
 # AgriBridge delivery plan
 
-The README is the assessment specification. The selected platform is kOps on EC2
+The requirements are in `docs/ASSESSMENT.md`. The selected platform is kOps on EC2
 in us-east-1, with Route 53 under agribridge.deuces.dev. EKS is not used.
 
 | Stage | Deliverable | Completion evidence |

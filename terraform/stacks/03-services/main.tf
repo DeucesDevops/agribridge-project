@@ -1,38 +1,49 @@
+terraform {
+  required_version = ">= 1.10"
+  backend "s3" {}
+  required_providers {
+    aws    = { source = "hashicorp/aws", version = "~> 6.0" }
+    random = { source = "hashicorp/random", version = "~> 3.7" }
+  }
+}
+
+provider "aws" { region = var.region }
+
 data "aws_caller_identity" "current" {}
 data "aws_route53_zone" "app" { name = var.zone_name }
 locals { oidc = "${var.discovery_bucket}.s3.${var.region}.amazonaws.com" }
 module "registry" {
-  source             = "../modules/registry"
+  source             = "../../modules/registry"
   dockerhub_username = var.dockerhub_username
 }
 module "runtime_secrets" {
-  source                  = "../modules/runtime-secrets"
+  source                  = "../../modules/runtime-secrets"
   environments            = var.environments
   account_id              = data.aws_caller_identity.current.account_id
   oidc                    = local.oidc
   workload_token_audience = var.workload_token_audience
 }
 module "tls" {
-  source    = "../modules/tls"
+  source    = "../../modules/tls"
   zone_name = var.zone_name
   zone_id   = data.aws_route53_zone.app.zone_id
 }
 module "backups" {
-  source                  = "../modules/backups"
+  source                  = "../../modules/backups"
   environments            = var.environments
   account_id              = data.aws_caller_identity.current.account_id
   oidc                    = local.oidc
   workload_token_audience = var.workload_token_audience
 }
 module "observability" {
-  source                  = "../modules/observability"
+  source                  = "../../modules/observability"
   account_id              = data.aws_caller_identity.current.account_id
   oidc                    = local.oidc
   workload_token_audience = var.workload_token_audience
   cluster_name            = var.cluster_name
 }
 module "deployment_config" {
-  source        = "../modules/deployment-config"
+  source        = "../../modules/deployment-config"
   environments  = var.environments
   region        = var.region
   zone_name     = var.zone_name
@@ -42,7 +53,7 @@ module "deployment_config" {
   backup_roles  = module.backups.role_arns
 }
 module "github_delivery" {
-  source                    = "../modules/github-delivery"
+  source                    = "../../modules/github-delivery"
   region                    = var.region
   account_id                = data.aws_caller_identity.current.account_id
   environments              = var.environments

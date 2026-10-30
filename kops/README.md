@@ -1,7 +1,7 @@
 # Flat Kubernetes definitions
 
 Keep the editable kOps cluster and instance-group YAML directly in this folder.
-`cluster.yaml` contains all four objects in one file. Generated AWS Terraform belongs in `terraform/modules/kops-cluster`, called by `terraform/cluster`, outside this folder.
+`cluster.yaml` contains all four objects in one file. Generated AWS Terraform belongs in `terraform/generated/kops`, called by `terraform/stacks/02-cluster`, outside this folder.
 
 `nginx-ingress-values.yaml.tftpl` configures the maintained F5 NGINX OSS controller
 and its AWS NLB Service. Terraform renders the ACM certificate ARN into it; there

@@ -1,3 +1,10 @@
+terraform {
+  required_version = ">= 1.10"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+}
+
 resource "aws_ssm_parameter" "deployment" {
   for_each = var.environments
   name     = "/agribridge/${each.key}/deployment"

@@ -12,8 +12,8 @@ based on that header would not distinguish the original connection correctly.
 Kubernetes probes and metrics contact the API service
 on its root paths, without rewriting. Operational endpoints are not public.
 
-kOps generates the EC2/VPC/IAM Terraform in `terraform/modules/kops-cluster`,
-called by the thin `terraform/cluster` entry point. One control
+kOps generates the EC2/VPC/IAM Terraform in `terraform/generated/kops`,
+called by the thin `terraform/stacks/02-cluster` entry point. One control
 plane and two t3.medium workers span two availability zones. This is a cost-aware
 assessment deployment, **not an HA control plane**. Each environment has its own
 PostgreSQL StatefulSet and retained, encrypted gp3 volume; each database is a
@@ -36,7 +36,9 @@ PyYAML, and GitHub CLI. Authenticate AWS and GitHub outside this repository.
 Use Node 22.22.0 for builds and tests. Route 53 must have a public delegated zone
 `agribridge.deuces.dev`; the existing zone is adopted into Terraform. In a new
 account, delegate the nameservers Terraform creates at the parent DNS provider.
-This unavoidable domain ownership step is the only external prerequisite.
+Complete [the configuration checklist](CONFIGURATION.md), including Docker Hub
+access and GitHub secrets. For a fresh zone, follow the bootstrap/delegation
+sequence in [the rebuild guide](REBUILD-GUIDE.md) before full provisioning.
 
 ```sh
 bash scripts/provision.sh
@@ -78,7 +80,7 @@ After applying the platform, verify the controller and Service:
 export KUBECONFIG="$PWD/.runtime/kubeconfig"
 kubectl -n ingress rollout status deployment/nginx-ingress-controller --timeout=300s
 kubectl -n ingress get service nginx-ingress-controller
-terraform -chdir=terraform/platform output app_urls
+terraform -chdir=terraform/stacks/04-platform output app_urls
 ```
 
 Run the delivery workflow to deploy the application, then check both HTTPS URLs.
@@ -88,8 +90,10 @@ behind one NLB avoids creating a load balancer for each release.
 
 The source folders were renamed from `web`, `charts`, and `infra` to `frontend`,
 `helm`, and `terraform`; the cluster definition is now `kops/cluster.yaml`.
-Terraform has four entry points (`bootstrap`, `cluster`, `services`, `platform`)
-and resource modules under `terraform/modules`; see `terraform/README.md`.
+Terraform has four numbered entry points under `terraform/stacks/`
+(`01-bootstrap`, `02-cluster`, `03-services`, `04-platform`), reusable modules
+under `terraform/modules/`, and kOps output under `terraform/generated/kops/`;
+see [the Terraform guide](../terraform/README.md).
 Remote state keys stay `kops/terraform.tfstate`, `services/terraform.tfstate`, and
 `platform/terraform.tfstate`. Explicit `moved` blocks map the previous resource
 addresses into modules, preserving existing instances and secret values. Review the
@@ -110,12 +114,13 @@ configuration requires a reviewed `kops rolling-update cluster --yes`; do not ro
 all workers simultaneously because PostgreSQL and its EBS volume must reattach.
 
 All application connections and secret identifiers flow from Terraform to SSM to
-the delivery script. Only the pipeline role ARN is configured as a GitHub variable,
-automatically. GitHub uses OIDC, not static AWS access keys. Deployments use
+the delivery script. The pipeline role ARN and Docker Hub username are configured
+as GitHub variables automatically. Supply `DOCKERHUB_TOKEN` as a GitHub secret.
+GitHub uses OIDC, not static AWS access keys. Deployments use
 namespace-scoped Kubernetes tokens stored in Secrets Manager. These tokens are
 long-lived: rotate them by replacing the corresponding `kubernetes_secret_v1.pipeline`
 resource at `module.platform.kubernetes_secret_v1.pipeline` and reapplying
-`terraform/platform`. Terraform state and these secrets are
+`terraform/stacks/04-platform`. Terraform state and these secrets are
 operator-sensitive even though the role is limited to an application namespace.
 
 Terraform service/cluster/platform state uses encrypted, versioned S3 and native
@@ -264,7 +269,7 @@ Secrets Manager and CloudWatch remain provisioned. There is no EKS fee or NAT ga
 T3 instances may incur surplus CPU-credit charges under sustained load. Cost depends
 on usage; check AWS Billing before leaving a demonstration running unattended.
 
-Destroy application releases first, then `terraform/platform` (so the load balancer
+Destroy application releases first, then `terraform/stacks/04-platform` (so the load balancer
 controller is still available), then services and the kOps-generated Terraform.
 Retained PostgreSQL/Grafana/Prometheus EBS volumes and backup/state buckets are
 intentionally not deleted automatically. Inventory and explicitly dispose of them only

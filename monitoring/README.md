@@ -1,6 +1,6 @@
 # Monitoring configuration
 
-Terraform installs these values through `terraform/platform`:
+Terraform installs these values through `terraform/stacks/04-platform`:
 
 - `prometheus-values.yaml`: Prometheus metrics and Grafana, with encrypted gp3 persistence.
 - `fluent-bit-values.yaml.tftpl`: container logs sent to CloudWatch. Terraform supplies the region and workload role; no credentials belong here.

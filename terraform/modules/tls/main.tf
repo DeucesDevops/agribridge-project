@@ -1,3 +1,10 @@
+terraform {
+  required_version = ">= 1.10"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+}
+
 resource "aws_acm_certificate" "app" {
   domain_name               = var.zone_name
   subject_alternative_names = ["*.${var.zone_name}"]

@@ -1,7 +1,7 @@
 # Verification — 30 October 2026
 
-Deployment is incomplete. This file distinguishes observed resources, checks that
-ran, and acceptance work that still needs a live cluster connection.
+The core deployment is live in staging and production. This file distinguishes
+verified deployment evidence from operational acceptance checks still outstanding.
 
 ## AWS inventory
 
@@ -17,7 +17,7 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
 | Secrets | Separate staging/production runtime and deploy secret entries exist; values were not printed |
 | TLS/DNS | Public `agribridge.deuces.dev` zone exists; apex/wildcard ACM certificate is ISSUED |
 | Ingress | After the workstation apply, `agribridge-ingress` NLB is active with both worker targets healthy, using TLS 443 and the existing ACM certificate |
-| Logs | `/agribridge/containers` exists; no log streams at inspection |
+| Logs | CloudWatch is receiving application, database, cache and staging seed logs in `/agribridge/containers` |
 
 ## Repairs
 
@@ -27,8 +27,8 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
   remain specific to each role. The Terraform source now matches the repair.
 - Added a cluster controller/webhook readiness gate before platform installation.
   The previous platform log reported `mservice.elbv2.k8s.aws` connection refused;
-  later read-only controller logs showed it starting, but readiness has not been
-  verified through the Kubernetes API in this session.
+  later read-only controller logs showed it starting. Subsequent successful
+  platform/application deployment provides the later evidence described below.
 - Increased External Secrets installation timeout to 900 seconds. Its previous
   Helm install timed out; later logs show the controllers and webhook starting.
 - Made monitoring depend explicitly on its StorageClass.
@@ -50,7 +50,7 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
   the prior workflow's `DOCKERHUB_TOKEN` secret. Both AWS SSM deployment handoffs
   now point to Docker Hub. Builds are separated from AWS-authenticated deployment;
   the same release tag is promoted to both environments. The token has not been
-  read or printed. New credential authentication still needs a publish run.
+  read or printed. Docker Hub authentication and both image pushes passed in the delivery run below.
   Existing empty ECR repositories are retained rather than destroyed.
 - Moved source to the agreed folder layout and updated Compose, workflow, scripts,
   Terraform file references, documentation, and monitoring values.
@@ -83,7 +83,7 @@ at commit `f510b2f` passed its checks job, including real PostgreSQL integration
 tests and dependency audits. Its staging job failed at AWS OIDC role assumption;
 production was skipped. That run predates these changes and does not validate the
 new layout. The live pipeline role already carries the repository-ID-based subject
-prefix present in the working tree; successful role assumption still needs a new run.
+prefix present in the working tree. A later successful delivery run verified role assumption in both environments.
 
 The modular/Docker Hub revision at `2dc75ad` passed all checks in
 [41055667305](https://github.com/DeucesDevops/agribridge-project/actions/runs/41055667305),
@@ -93,28 +93,70 @@ to CI. Pull-request checks intentionally skip publishing and deployment.
 
 A fresh AWS read before the NGINX switch confirmed three running cluster instances,
 two appropriately tagged public subnets and zero ELBv2 load balancers. A direct
-Kubernetes API request still failed with `operation not permitted`. The NLB and app
-DNS records have therefore been configured in source, not created or verified live.
+Kubernetes API request still failed with `operation not permitted`. At that point
+the NLB and app DNS records were configured only in source; later AWS and delivery
+verification below supersedes that intermediate status.
 
 Subsequent workstation execution on 30 October created the NLB at 12:51 UTC and
 both Route 53 CNAME records. AWS APIs then confirmed NLB state `active` and two
 healthy instance targets on NodePort 30922. Monitoring finished updating, but the
 platform apply failed because the existing External Secrets Helm release was still
 in use. The resource now enables `upgrade_install` for a retry using the same pinned
-chart and role. That recovery apply and the application delivery are still pending;
-healthy ingress alone does not establish application availability.
+chart and role. At that point recovery and delivery were pending; the successful
+delivery below subsequently verified application deployment.
 
-## Remaining live acceptance
+## Successful deployment evidence
 
-1. Review the first migration plan for each entry point, then run
-   `bash scripts/resume-platform.sh` from an authenticated workstation with
-   Kubernetes/network access. It refreshes service state and resumes platform
-   Terraform without replacing the cluster. Confirm a second plan has no changes.
-2. Run the delivery workflow from the branch containing this layout. Confirm AWS
-   OIDC login, image publication, staging and production with identical image tags.
-3. Confirm ExternalSecrets are Ready, PostgreSQL claims are Bound, HTTPS routing
-   and staging login work, and the live API reports the expected commit/tag.
-4. Exercise cache degradation, PostgreSQL persistence, Helm rollback, metrics and
-   CloudWatch log delivery. Run a backup and an isolated restore drill.
+[Delivery run 41059971340](https://github.com/DeucesDevops/agribridge-project/actions/runs/41059971340)
+completed successfully at commit `0984fae3f5db513447bac83af62d5bc3c2d51bba`.
+All four jobs passed: checks, Docker Hub publication, staging and production.
+Both Helm releases reported deployed revision 1. API version output in both jobs
+reported the same commit and image tag:
+`0984fae3f5db513447bac83af62d5bc3c2d51bba-41059971340-1`.
 
-Do not label the application production-ready until these checks have evidence.
+| Verification | Result |
+|--------------|--------|
+| Staging HTTPS | AgriBridge sign-in page verified in the browser |
+| Production HTTPS | AgriBridge sign-in page verified in the browser |
+| API identity and readiness | Verified by both successful deployment jobs |
+| Docker Hub API image | Published digest `sha256:db45d2340f4f8c8b47b84c91f34468a6a882ef322024eeadfcf5995c18fdcb8c` |
+| Docker Hub frontend image | Published digest `sha256:017523fd720cb20f16c5488e013159d7d70dc7b4ef47f0e3db7899efa6186d8c` |
+| Log collection | CloudWatch streams present for both environments |
+| Demo seeding | Staging seed hook completed during its successful Helm release; production remains unseeded |
+
+The later folder simplification preserves module labels, resource names, provider
+aliases, backend keys and release configuration. It requires no live infrastructure
+apply; CI validates the relocated source paths.
+
+## Folder and guide verification
+
+- Compared the relocated Terraform against a source snapshot taken immediately
+  before simplification. All 141 managed resource blocks, 141 migration blocks,
+  data blocks, module labels, provider configurations, variables and existing
+  outputs are preserved after accounting for relative-path changes. Terraform
+  requirements and backend settings are unchanged. The only new Terraform
+  declarations expose the hosted-zone ID/name servers through bootstrap outputs.
+- Installed local module references successfully from all four numbered stacks.
+  Resolved all 52 Terraform file/template references and 26 local Markdown links.
+- `make check` passed Terraform formatting, syntax checks for every shell script,
+  and Helm lint. Workflow YAML parsed with the expected four jobs. Make targets
+  were dry-run without provisioning or deploying live resources.
+- Added the ordered 15-stage rebuild guide, per-stage future-chat prompts and a
+  configuration checklist covering supplied inputs and generated handoffs. The
+  original assessment remains in `docs/ASSESSMENT.md`.
+
+Local static checks do not prove a no-drift cloud plan. Full provider validation
+for the relocated roots runs in pull-request CI; live operational checks below
+remain separate.
+
+## Remaining operational acceptance
+
+1. Confirm a fresh Terraform plan has no unintended infrastructure changes after
+   reinitializing the numbered stack directories.
+2. Exercise an authenticated staging order flow and confirm Prometheus targets and
+   application metrics in the dashboards.
+3. Verify cache degradation, database persistence, Helm rollback, a manual backup
+   and an isolated restore drill.
+
+These unexecuted checks are not implied by successful deployment. Do not describe
+the system as production-ready until the required operational checks have evidence.

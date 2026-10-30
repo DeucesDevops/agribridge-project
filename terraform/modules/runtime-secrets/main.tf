@@ -1,3 +1,11 @@
+terraform {
+  required_version = ">= 1.10"
+  required_providers {
+    aws    = { source = "hashicorp/aws", version = "~> 6.0" }
+    random = { source = "hashicorp/random", version = "~> 3.7" }
+  }
+}
+
 resource "random_password" "secret" {
   for_each = toset(flatten([for environment in var.environments : [for key in ["PGPASSWORD", "JWT_SECRET", "SEED_PASSWORD"] : "${environment}-${key}"]]))
   length   = 40

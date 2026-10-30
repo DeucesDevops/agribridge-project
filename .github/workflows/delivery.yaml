@@ -66,13 +66,13 @@ jobs:
             abort "Wrong controller class" unless service.dig("spec", "loadBalancerClass") == "service.k8s.aws/nlb"
           '
       - name: Validate deployment scripts
-        run: bash -n scripts/*.sh
+        run: for script in scripts/*.sh; do bash -n "$script" || exit; done
       - uses: hashicorp/setup-terraform@v3
         with: {terraform_version: '1.14.6'}
       - run: terraform fmt -check -recursive terraform
       - name: Validate Terraform modules without cloud credentials
         run: |
-          for directory in terraform/bootstrap terraform/cluster terraform/services terraform/platform; do
+          for directory in terraform/stacks/01-bootstrap terraform/stacks/02-cluster terraform/stacks/03-services terraform/stacks/04-platform; do
             terraform -chdir="$directory" init -backend=false -input=false
             terraform -chdir="$directory" validate -no-color
           done

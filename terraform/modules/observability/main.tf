@@ -1,3 +1,10 @@
+terraform {
+  required_version = ">= 1.10"
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 6.0" }
+  }
+}
+
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/agribridge/containers"
   retention_in_days = 14
