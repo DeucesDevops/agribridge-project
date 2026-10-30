@@ -1,0 +1,98 @@
+{{- range $component := list "api" "web" }}
+{{- $settings := index $.Values $component }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+spec:
+  replicas: {{ $settings.replicas }}
+  selector:
+    matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  template:
+    metadata:
+      labels: {app: {{ $.Release.Name }}-{{ $component }}}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") $ | sha256sum }}
+    spec:
+      serviceAccountName: {{ $.Release.Name }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+      containers:
+        - name: {{ $component }}
+          image: "{{ $settings.repository }}:{{ $settings.tag }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            readOnlyRootFilesystem: true
+          ports:
+            - name: http
+              containerPort: {{ if eq $component "api" }}3000{{ else }}8080{{ end }}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 512Mi}
+          {{- if eq $component "api" }}
+          envFrom:
+            - configMapRef: {name: {{ $.Release.Name }}-config}
+            - secretRef: {name: {{ $.Release.Name }}-runtime}
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 6
+          {{- else }}
+          env:
+            - name: API_UPSTREAM
+              value: {{ $.Release.Name }}-api:3000
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: nginx-config, mountPath: /etc/nginx/conf.d}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+          {{- end }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec: {command: ["/bin/sh", "-c", "sleep 5"]}
+      {{- if eq $component "web" }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-config
+          emptyDir: {}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+  labels: {app: {{ $.Release.Name }}-{{ $component }}}
+spec:
+  selector: {app: {{ $.Release.Name }}-{{ $component }}}
+  ports:
+    - {name: http, port: {{ if eq $component "api" }}3000{{ else }}8080{{ end }}, targetPort: http}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $.Release.Name }}-{{ $component }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+{{- end }}

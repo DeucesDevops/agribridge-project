@@ -1,0 +1,51 @@
+api:
+  repository: agribridge-api
+  tag: local
+  replicas: 2
+web:
+  repository: agribridge-web
+  tag: local
+  replicas: 2
+hostname: staging.agribridge.deuces.dev
+region: us-east-1
+secretArn: ''
+monitoring: true
+config:
+  NODE_ENV: production
+  PORT: '3000'
+  LOG_LEVEL: info
+  TRUST_PROXY: 'true'
+  SHUTDOWN_GRACE_MS: '10000'
+  PGHOST: agribridge-postgres
+  PGPORT: '5432'
+  PGDATABASE: agribridge
+  PGUSER: agribridge
+  PGSSL: 'false'
+  PG_POOL_MAX: '10'
+  PG_POOL_MIN: '0'
+  PG_CONNECT_TIMEOUT_MS: '5000'
+  PG_IDLE_TIMEOUT_MS: '30000'
+  PG_STATEMENT_TIMEOUT_MS: '10000'
+  REDIS_ENABLED: 'true'
+  REDIS_URL: redis://agribridge-redis:6379
+  REDIS_REQUIRED: 'false'
+  CACHE_TTL_SECONDS: '30'
+  TOKEN_TTL_SECONDS: '28800'
+  COOKIE_NAME: agribridge_session
+  COOKIE_SECURE: 'true'
+  BCRYPT_ROUNDS: '12'
+  RUN_MIGRATIONS: 'true'
+  SEED_DEMO_DATA: 'false'
+postgres:
+  image: postgres:16.11-bookworm
+  storageClass: agribridge-gp3
+  size: 20Gi
+redis:
+  image: redis:7.4.7-alpine
+backup:
+  enabled: true
+  bucket: ''
+  role: ''
+  prefix: staging
+  schedule: '0 2 * * *'
+seedDemoData: false

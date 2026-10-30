@@ -2,7 +2,16 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), {
+    name: 'bundle-budget',
+    generateBundle(_options, bundle) {
+      for (const asset of Object.values(bundle)) {
+        if (asset.type === 'chunk' && Buffer.byteLength(asset.code) > 250 * 1024) {
+          this.error(`JavaScript chunk ${asset.fileName} exceeds the 250 KiB budget`);
+        }
+      }
+    },
+  }],
 
   server: {
     port: 5173,

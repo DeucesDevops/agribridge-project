@@ -26,6 +26,7 @@ export async function initCache() {
 
   client = createClient({
     url: config.cache.url,
+    disableOfflineQueue: true,
     socket: {
       connectTimeout: 3000,
       // Give up reconnecting forever, but back off so we do not hammer a
@@ -44,10 +45,18 @@ export async function initCache() {
   });
   client.on('end', () => { connected = false; });
 
+  let startupTimer;
   try {
-    await client.connect();
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => {
+        startupTimer = setTimeout(() => reject(new Error('cache startup deadline exceeded')), 3000);
+      }),
+    ]);
   } catch (err) {
     logger.warn('cache unavailable at startup; continuing without it', { err: err.message });
+  } finally {
+    clearTimeout(startupTimer);
   }
   return client;
 }
@@ -119,8 +128,8 @@ export async function checkCache() {
 }
 
 export async function closeCache() {
-  if (client && connected) {
-    try { await client.quit(); } catch { /* already gone */ }
+  if (client?.isOpen) {
+    try { await client.disconnect(); } catch { /* already gone */ }
   }
   connected = false;
 }

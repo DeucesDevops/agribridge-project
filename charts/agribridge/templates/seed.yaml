@@ -1,0 +1,23 @@
+{{- if .Values.seedDemoData }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-seed
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: seed
+          image: "{{ .Values.api.repository }}:{{ .Values.api.tag }}"
+          command: [node, -e, "import('./src/migrate.js').then(m=>m.runMigrations()).then(()=>import('./src/seed.js')).then(m=>m.seedDemoData()).then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+          envFrom:
+            - configMapRef: {name: {{ .Release.Name }}-config}
+            - secretRef: {name: {{ .Release.Name }}-runtime}
+{{- end }}

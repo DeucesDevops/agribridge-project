@@ -2,3 +2,11 @@ node_modules/
 dist/
 coverage/
 .env
+reports/
+.terraform/
+*.tfstate*
+*.tfplan
+*.auto.tfvars
+!*.auto.tfvars.example
+backend.hcl
+.runtime/

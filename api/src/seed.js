@@ -13,7 +13,7 @@ import { hashPassword } from './auth.js';
 import { calculateOrderTotal } from './domain/pricing.js';
 import logger from './logger.js';
 
-const DEMO_PASSWORD = process.env.SEED_PASSWORD || 'HarvestMonday2025!';
+const DEMO_PASSWORD = process.env.SEED_PASSWORD;
 
 const FARMERS = [
   { email: 'amina.yusuf@example.ng', name: 'Amina Yusuf', state: 'Kano' },
@@ -48,6 +48,7 @@ export async function seedDemoData() {
   }
 
   logger.info('seeding demo data');
+  if (!DEMO_PASSWORD) throw new Error('SEED_PASSWORD is required when seeding');
   const passwordHash = await hashPassword(DEMO_PASSWORD);
 
   const farmerIds = [];
@@ -132,7 +133,7 @@ export async function seedDemoData() {
 
   return {
     skipped: false,
-    credentials: { password: DEMO_PASSWORD, farmer: FARMERS[0].email, buyer: BUYERS[0].email },
+    accounts: { farmer: FARMERS[0].email, buyer: BUYERS[0].email },
   };
 }
 
