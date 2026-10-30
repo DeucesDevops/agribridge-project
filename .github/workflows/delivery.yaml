@@ -1,0 +1,133 @@
+name: Test, build and deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: delivery-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.11-bookworm
+        env:
+          POSTGRES_USER: agribridge
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: agribridge_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd 'pg_isready -U agribridge'
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: agribridge
+      PGPASSWORD: integration-only
+      PGDATABASE: agribridge_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            web/package-lock.json
+      - run: npm ci --prefix api && npm ci --prefix web
+      - run: npm run lint --prefix api -- --max-warnings=0 && npm run lint --prefix web -- --max-warnings=0
+      - run: npm audit --prefix api --audit-level=high && npm audit --prefix web --audit-level=high
+      - run: npm run test:coverage --prefix api
+      - run: cp api/reports/junit.xml api/reports/unit.xml
+      - run: npm run test:integration --prefix api
+      - run: npm run test:coverage --prefix web
+      - run: npm run build --prefix web
+      - uses: azure/setup-helm@v4.3.1
+        with: {version: v3.17.3}
+      - run: helm lint charts/agribridge --set secretArn=validation
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: '1.14.6'}
+      - run: terraform fmt -check -recursive infra
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            api/reports/
+            api/coverage/
+            web/coverage/
+      - name: Summarize JUnit results
+        if: always()
+        run: python3 scripts/test-summary.py >> "$GITHUB_STEP_SUMMARY"
+  staging:
+    if: github.event_name != 'pull_request'
+    needs: checks
+    environment:
+      name: staging
+      url: https://staging.agribridge.deuces.dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_tag: ${{ steps.identity.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: azure/setup-helm@v4.3.1
+        with: {version: v3.17.3}
+      - name: Resolve deployment and build identity
+        id: identity
+        run: |
+          aws ssm get-parameter --name /agribridge/staging/deployment --query Parameter.Value --output text > /tmp/deployment.json
+          echo "API_IMAGE=$(jq -r .api_repository /tmp/deployment.json)" >> "$GITHUB_ENV"
+          echo "WEB_IMAGE=$(jq -r .web_repository /tmp/deployment.json)" >> "$GITHUB_ENV"
+          tag="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$(node -p 'require("./api/package.json").version')" >> "$GITHUB_ENV"
+      - name: Build and exercise the exact images to publish
+        run: |
+          cp .env.example .env
+          docker compose build
+          docker compose up -d --wait --wait-timeout 180
+          curl --fail http://localhost:8080/ -o /dev/null
+          docker compose exec -T api node -e "fetch('http://localhost:3000/readyz').then(r=>{if(!r.ok)process.exit(1)})"
+      - name: Publish verified images
+        run: |
+          docker push "$API_IMAGE:$IMAGE_TAG"
+          docker push "$WEB_IMAGE:$IMAGE_TAG"
+      - run: bash scripts/deploy.sh staging "$IMAGE_TAG"
+      - name: Compose diagnostics
+        if: failure()
+        run: docker compose logs --tail=100
+      - name: Clean local stack
+        if: always()
+        run: docker compose down -v
+  production:
+    needs: staging
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://production.agribridge.deuces.dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - uses: azure/setup-helm@v4.3.1
+        with: {version: v3.17.3}
+      - run: bash scripts/deploy.sh production '${{ needs.staging.outputs.image_tag }}'

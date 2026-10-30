@@ -1,17 +1,6 @@
 import React, { useState } from 'react';
 import api from '../api.js';
 
-/**
- * Login. The demo-credential shortcuts exist so that during a recording you
- * are not typing an email address on camera - one tap switches persona.
- */
-const DEMO = [
-  { label: 'Farmer (Amina, Kano)', email: 'amina.yusuf@example.ng' },
-  { label: 'Buyer (Sahel Mills)', email: 'procurement@sahelmills.example' },
-  { label: 'Field agent (Ibadan)', email: 'agent@agribridge.example' },
-];
-const DEMO_PASSWORD = 'HarvestMonday2025!';
-
 export default function Login({ onSignedIn }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,12 +19,6 @@ export default function Login({ onSignedIn }) {
     } finally {
       setBusy(false);
     }
-  }
-
-  function useDemo(demoEmail) {
-    setEmail(demoEmail);
-    setPassword(DEMO_PASSWORD);
-    setError(null);
   }
 
   return (
@@ -84,22 +67,7 @@ export default function Login({ onSignedIn }) {
           </button>
         </form>
 
-        <div className="demo-creds">
-          <strong>Demo accounts</strong>
-          <code>password: {DEMO_PASSWORD}</code>
-          <div className="actions" style={{ marginTop: '.5rem' }}>
-            {DEMO.map((d) => (
-              <button
-                key={d.email}
-                type="button"
-                className="secondary small"
-                onClick={() => useDemo(d.email)}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
+
       </div>
     </div>
   );

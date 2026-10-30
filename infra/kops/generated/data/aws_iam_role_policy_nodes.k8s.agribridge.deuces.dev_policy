@@ -1,0 +1,21 @@
+{
+  "Statement": [
+    {
+      "Action": [
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeInstances",
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:DescribeRepositories",
+        "ecr:GetAuthorizationToken",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:GetRepositoryPolicy",
+        "ecr:ListImages"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ],
+  "Version": "2012-10-17"
+}

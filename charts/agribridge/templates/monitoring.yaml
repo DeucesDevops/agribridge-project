@@ -1,0 +1,27 @@
+{{- if .Values.monitoring }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels: {release: monitoring}
+spec:
+  selector:
+    matchLabels: {app: {{ .Release.Name }}-api}
+  endpoints:
+    - {port: http, path: /metrics, interval: 15s}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}
+  labels: {release: monitoring}
+spec:
+  groups:
+    - name: agribridge
+      rules:
+        - alert: AgriBridgeUnavailable
+          expr: sum(up{service="{{ .Release.Name }}-api"}) == 0
+          for: 2m
+          labels: {severity: critical}
+          annotations: {summary: 'No AgriBridge API instances are reachable'}
+{{- end }}
