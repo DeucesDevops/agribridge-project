@@ -7,6 +7,7 @@ web:
   tag: local
   replicas: 2
 hostname: staging.agribridge.deuces.dev
+ingressClassName: nginx
 region: us-east-1
 secretArn: ''
 monitoring: true

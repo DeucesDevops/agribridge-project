@@ -35,6 +35,15 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
 - Set the frontend pod's UID/GID and volume group to 101 so the non-root Nginx
   entrypoint can render runtime configuration into its emptyDir mounts while
   keeping the image filesystem read-only.
+- Replaced the failed Traefik configuration with maintained F5 NGINX OSS chart
+  2.8.0/controller 5.7.0. Its Service requests one internet-facing AWS NLB using
+  instance targets and the existing ACM certificate; only TLS port 443 is public,
+  forwarding to NGINX HTTP port 80. Both environment Ingresses select class `nginx`.
+  The pinned upstream chart was fetched for an offline render check: controller
+  and Service names, replica count, status-reporting target, load balancer class
+  and listener/target ports all passed. Local rendering skipped upstream schema
+  validation because its schema references an external URL blocked in this
+  session; CI runs the normal schema-aware chart render.
 - Fixed deployment version verification to compare `/version.imageTag` against
   the requested tag argument, rather than the container's own `IMAGE_TAG` value.
 - Switched image publication to the existing `macroni607` Docker Hub account using
@@ -75,6 +84,17 @@ tests and dependency audits. Its staging job failed at AWS OIDC role assumption;
 production was skipped. That run predates these changes and does not validate the
 new layout. The live pipeline role already carries the repository-ID-based subject
 prefix present in the working tree; successful role assumption still needs a new run.
+
+The modular/Docker Hub revision at `2dc75ad` passed all checks in
+[41055667305](https://github.com/DeucesDevops/agribridge-project/actions/runs/41055667305),
+including full validation of all four Terraform entry points and the PostgreSQL
+integration suite. This precedes the NGINX switch, which adds upstream chart rendering
+to CI. Pull-request checks intentionally skip publishing and deployment.
+
+A fresh AWS read before the NGINX switch confirmed three running cluster instances,
+two appropriately tagged public subnets and zero ELBv2 load balancers. A direct
+Kubernetes API request still failed with `operation not permitted`. The NLB and app
+DNS records have therefore been configured in source, not created or verified live.
 
 ## Remaining live acceptance
 

@@ -3,7 +3,7 @@ kind: Ingress
 metadata:
   name: {{ .Release.Name }}
 spec:
-  ingressClassName: traefik
+  ingressClassName: {{ .Values.ingressClassName | quote }}
   rules:
     - host: {{ .Values.hostname }}
       http:

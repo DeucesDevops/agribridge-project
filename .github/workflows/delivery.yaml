@@ -46,8 +46,25 @@ jobs:
       - run: npm run test:coverage --prefix frontend
       - run: npm run build --prefix frontend
       - uses: azure/setup-helm@v4.3.1
-        with: {version: v3.17.3}
+        with: {version: v3.19.0}
       - run: helm lint helm/agribridge --set secretArn=validation
+      - name: Validate NGINX controller and NLB service rendering
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          values = Path('kops/nginx-ingress-values.yaml.tftpl').read_text()
+          values = values.replace('${certificate_arn}', 'arn:aws:acm:us-east-1:123456789012:certificate/validation')
+          Path('/tmp/nginx-values.yaml').write_text(values)
+          PY
+          helm template nginx-ingress oci://ghcr.io/nginx/charts/nginx-ingress --version 2.8.0 \
+            --namespace ingress --kube-version 1.36.6 --skip-crds --values /tmp/nginx-values.yaml > /tmp/nginx-rendered.yaml
+          ruby -ryaml -e '
+            service = YAML.load_stream(File.read("/tmp/nginx-rendered.yaml")).compact.find { |r| r["kind"] == "Service" && r.dig("metadata", "name") == "nginx-ingress-controller" }
+            abort "NGINX LoadBalancer service missing" unless service && service.dig("spec", "type") == "LoadBalancer"
+            ports = service.dig("spec", "ports")
+            abort "Expected only TLS 443 to backend HTTP 80" unless ports.length == 1 && ports[0]["port"] == 443 && ports[0]["targetPort"] == 80
+            abort "Wrong controller class" unless service.dig("spec", "loadBalancerClass") == "service.k8s.aws/nlb"
+          '
       - name: Validate deployment scripts
         run: bash -n scripts/*.sh
       - uses: hashicorp/setup-terraform@v3
@@ -129,7 +146,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
           aws-region: us-east-1
       - uses: azure/setup-helm@v4.3.1
-        with: {version: v3.17.3}
+        with: {version: v3.19.0}
       - run: bash scripts/deploy.sh staging '${{ needs.publish.outputs.image_tag }}'
   production:
     needs: [publish, staging]
@@ -147,5 +164,5 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
           aws-region: us-east-1
       - uses: azure/setup-helm@v4.3.1
-        with: {version: v3.17.3}
+        with: {version: v3.19.0}
       - run: bash scripts/deploy.sh production '${{ needs.publish.outputs.image_tag }}'

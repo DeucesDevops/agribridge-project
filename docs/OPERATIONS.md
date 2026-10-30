@@ -2,9 +2,14 @@
 
 ## Architecture and tradeoffs
 
-Route 53 → ACM TLS on an AWS Network Load Balancer → Traefik → web Nginx → API.
+Route 53 → ACM TLS on an AWS Network Load Balancer → F5 NGINX OSS Ingress
+Controller → frontend Nginx → API.
 The web bundle uses relative `/api` URLs. Nginx resolves the API service at runtime.
-HTTP redirects to HTTPS. Kubernetes probes and metrics contact the API service
+Only public HTTPS port 443 is exposed. The NLB decrypts TLS and forwards TCP to
+NGINX's HTTP listener on port 80 through the Kubernetes NodePort. Public HTTP
+port 80 is disabled. NLBs do not add `X-Forwarded-Proto`, so an HTTP redirect
+based on that header would not distinguish the original connection correctly.
+Kubernetes probes and metrics contact the API service
 on its root paths, without rewriting. Operational endpoints are not public.
 
 kOps generates the EC2/VPC/IAM Terraform in `terraform/modules/kops-cluster`,
@@ -26,7 +31,7 @@ The stopped pre-existing instances are left untouched.
 
 ## First deployment and repeat application
 
-Install AWS CLI, Terraform >=1.10, kOps 1.36.2, kubectl, Helm 3, jq, Python 3 with
+Install AWS CLI, Terraform >=1.10, kOps 1.36.2, kubectl, Helm >=3.19, jq, Python 3 with
 PyYAML, and GitHub CLI. Authenticate AWS and GitHub outside this repository.
 Use Node 22.22.0 for builds and tests. Route 53 must have a public delegated zone
 `agribridge.deuces.dev`; the existing zone is adopted into Terraform. In a new
@@ -45,6 +50,33 @@ it does not recreate the cluster. The readiness gate waits for the AWS load
 balancer, pod identity and EBS controllers and for ready admission service endpoints.
 External Secrets gets a 15-minute cold-start timeout. Do not bypass a failing gate;
 inspect the controller rollout and pod events first.
+
+Ingress values live in the flat file `kops/nginx-ingress-values.yaml.tftpl`.
+Terraform supplies the existing ACM certificate ARN and installs the maintained
+F5 OSS chart `nginx-ingress` 2.8.0 (controller 5.7.0). The retired community
+`ingress-nginx` chart is not used. The controller Service requests an internet-facing
+NLB with instance targets, which works with this cluster's Calico networking.
+The AWS Load Balancer Controller owns the NLB and its target groups; do not create
+a second load balancer manually in the AWS console. Terraform waits for that Service's
+load balancer hostname before writing the two Route 53 CNAME records.
+
+The previous failed Traefik release changes to a new `nginx-ingress` Helm release
+in the same namespace. Expect the ingress Helm resource replacement in the plan;
+the application databases, secrets and cluster must not be replaced as part of it.
+
+After applying the platform, verify the controller and Service:
+
+```sh
+export KUBECONFIG="$PWD/.runtime/kubeconfig"
+kubectl -n ingress rollout status deployment/nginx-ingress-controller --timeout=300s
+kubectl -n ingress get service nginx-ingress-controller
+terraform -chdir=terraform/platform output app_urls
+```
+
+Run the delivery workflow to deploy the application, then check both HTTPS URLs.
+A reachable controller can return 404 until the application Ingress is installed;
+that alone does not prove the application is deployed. Keeping both environments
+behind one NLB avoids creating a load balancer for each release.
 
 The source folders were renamed from `web`, `charts`, and `infra` to `frontend`,
 `helm`, and `terraform`; the cluster definition is now `kops/cluster.yaml`.

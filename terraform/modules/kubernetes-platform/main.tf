@@ -17,30 +17,20 @@ resource "helm_release" "secrets" {
 }
 
 resource "helm_release" "ingress" {
-  name             = "traefik"
-  repository       = "https://traefik.github.io/charts"
-  chart            = "traefik"
-  version          = "37.4.0"
+  name             = "nginx-ingress"
+  chart            = "oci://ghcr.io/nginx/charts/nginx-ingress"
+  version          = "2.8.0"
   namespace        = "ingress"
   create_namespace = true
   timeout          = 900
-  values = [yamlencode({
-    deployment = { replicas = 2 },
-    service = { annotations = {
-      "service.beta.kubernetes.io/aws-load-balancer-type"            = "external",
-      "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "instance",
-      "service.beta.kubernetes.io/aws-load-balancer-scheme"          = "internet-facing",
-      "service.beta.kubernetes.io/aws-load-balancer-ssl-cert"        = var.platform.certificate_arn,
-      "service.beta.kubernetes.io/aws-load-balancer-ssl-ports"       = "443"
-    } },
-    ports = { web = { redirections = { entryPoint = { to = "websecure", scheme = "https", permanent = true } } }, websecure = { tls = { enabled = false } } }
-  })]
+  skip_crds        = true
+  values           = [var.ingress_values]
 }
 
 data "kubernetes_service_v1" "ingress" {
   depends_on = [helm_release.ingress]
   metadata {
-    name      = "traefik"
+    name      = "nginx-ingress-controller"
     namespace = "ingress"
   }
 }
