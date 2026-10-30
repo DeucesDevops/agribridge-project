@@ -21,6 +21,11 @@ spec:
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
+        {{- if eq $component "web" }}
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        {{- end }}
         seccompProfile: {type: RuntimeDefault}
       topologySpreadConstraints:
         - maxSkew: 1

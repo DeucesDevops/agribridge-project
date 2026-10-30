@@ -32,6 +32,9 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
 - Increased External Secrets installation timeout to 900 seconds. Its previous
   Helm install timed out; later logs show the controllers and webhook starting.
 - Made monitoring depend explicitly on its StorageClass.
+- Set the frontend pod's UID/GID and volume group to 101 so the non-root Nginx
+  entrypoint can render runtime configuration into its emptyDir mounts while
+  keeping the image filesystem read-only.
 - Fixed deployment version verification to compare `/version.imageTag` against
   the requested tag argument, rather than the container's own `IMAGE_TAG` value.
 - Switched image publication to the existing `macroni607` Docker Hub account using
