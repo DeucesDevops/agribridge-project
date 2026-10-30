@@ -17,10 +17,10 @@ jq --arg tag "$image_tag" --arg environment "$environment" '{
   backup: {bucket: .backup_bucket, role: .backup_role, prefix: $environment}
 }' "$runtime/deployment.json" > "$runtime/values.json"
 namespace=$(jq -r .namespace "$runtime/deployment.json")
-helm upgrade --install agribridge charts/agribridge --namespace "$namespace" \
-  --values "charts/agribridge/values-$environment.yaml" --values "$runtime/values.json" \
+helm upgrade --install agribridge helm/agribridge --namespace "$namespace" \
+  --values "helm/agribridge/values-$environment.yaml" --values "$runtime/values.json" \
   --atomic --timeout 15m --history-max 10
 kubectl -n "$namespace" rollout status deployment/agribridge-api --timeout=180s
 kubectl -n "$namespace" exec deployment/agribridge-api -- node -e \
-  "fetch('http://localhost:3000/version').then(r=>r.json()).then(v=>{if(v.image_tag!==process.env.IMAGE_TAG && v.imageTag!==process.env.IMAGE_TAG)process.exit(1);console.log(JSON.stringify(v))})"
+  "fetch('http://localhost:3000/version').then(r=>{if(!r.ok)throw new Error('Version endpoint failed');return r.json()}).then(v=>{if(v.imageTag!==process.argv[1])throw new Error('Deployed image tag does not match requested release');console.log(JSON.stringify(v))}).catch(e=>{console.error(e.message);process.exit(1)})" "$image_tag"
 curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors "https://$(jq -r .hostname "$runtime/deployment.json")/" -o /dev/null
