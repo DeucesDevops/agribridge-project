@@ -51,6 +51,14 @@ balancer, pod identity and EBS controllers and for ready admission service endpo
 External Secrets gets a 15-minute cold-start timeout. Do not bypass a failing gate;
 inspect the controller rollout and pod events first.
 
+If an earlier failed External Secrets installation left its Helm release behind,
+Terraform uses `upgrade_install = true` for that release. It upgrades the existing
+`external-secrets/external-secrets` installation to the pinned 0.20.4 chart and
+declared service-account role, or installs it when absent. This avoids the
+`cannot re-use a name that is still in use` failure without uninstalling the
+controller or deleting CRDs. Rerun `bash scripts/resume-platform.sh` after this
+fix; only run delivery after the script reports the platform ready.
+
 Ingress values live in the flat file `kops/nginx-ingress-values.yaml.tftpl`.
 Terraform supplies the existing ACM certificate ARN and installs the maintained
 F5 OSS chart `nginx-ingress` 2.8.0 (controller 5.7.0). The retired community

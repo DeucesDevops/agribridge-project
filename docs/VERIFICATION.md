@@ -16,7 +16,7 @@ Inspected account `237258628535`, region `us-east-1`, using AWS APIs.
 | ECR | `agribridge-api` and `agribridge-web` exist; both had zero images at inspection |
 | Secrets | Separate staging/production runtime and deploy secret entries exist; values were not printed |
 | TLS/DNS | Public `agribridge.deuces.dev` zone exists; apex/wildcard ACM certificate is ISSUED |
-| Ingress | No ELBv2 load balancers existed; public application access is not ready |
+| Ingress | After the workstation apply, `agribridge-ingress` NLB is active with both worker targets healthy, using TLS 443 and the existing ACM certificate |
 | Logs | `/agribridge/containers` exists; no log streams at inspection |
 
 ## Repairs
@@ -95,6 +95,14 @@ A fresh AWS read before the NGINX switch confirmed three running cluster instanc
 two appropriately tagged public subnets and zero ELBv2 load balancers. A direct
 Kubernetes API request still failed with `operation not permitted`. The NLB and app
 DNS records have therefore been configured in source, not created or verified live.
+
+Subsequent workstation execution on 30 October created the NLB at 12:51 UTC and
+both Route 53 CNAME records. AWS APIs then confirmed NLB state `active` and two
+healthy instance targets on NodePort 30922. Monitoring finished updating, but the
+platform apply failed because the existing External Secrets Helm release was still
+in use. The resource now enables `upgrade_install` for a retry using the same pinned
+chart and role. That recovery apply and the application delivery are still pending;
+healthy ingress alone does not establish application availability.
 
 ## Remaining live acceptance
 

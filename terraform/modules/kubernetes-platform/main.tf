@@ -13,7 +13,10 @@ resource "helm_release" "secrets" {
   namespace        = "external-secrets"
   create_namespace = true
   timeout          = 900
-  values           = [yamlencode({ serviceAccount = { name = "external-secrets", annotations = { "eks.amazonaws.com/role-arn" = var.platform.secrets_role } } })]
+  # A previous timed-out install may leave the Helm release outside Terraform state.
+  # Recover this project's existing, pinned release with an upgrade rather than reinstalling.
+  upgrade_install = true
+  values          = [yamlencode({ serviceAccount = { name = "external-secrets", annotations = { "eks.amazonaws.com/role-arn" = var.platform.secrets_role } } })]
 }
 
 resource "helm_release" "ingress" {
