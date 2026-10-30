@@ -4,9 +4,27 @@ A marketplace connecting Nigerian smallholder farmers to institutional grain buy
 Farmers list harvested lots; buyers browse, filter and place orders against them; both
 sides track those orders through a lifecycle.
 
-This repository contains the application source only. Everything needed to build,
-package, configure, deploy, observe and operate it is yours to design and produce. A
-working application is the starting condition, not the goal.
+This repository contains the application and its delivery platform. The assessment
+requirements below describe the original assignment; deployment instructions are in
+[docs/OPERATIONS.md](docs/OPERATIONS.md), and measured status is in
+[docs/VERIFICATION.md](docs/VERIFICATION.md).
+
+| Path | Purpose |
+|------|---------|
+| `frontend/` | React/Vite application, Dockerfile and Nginx runtime routing |
+| `api/` | Express API, migrations, tests and Dockerfile |
+| `terraform/bootstrap/` | Protected state buckets and adopted DNS zone |
+| `terraform/cluster/` | Cluster entry point; existing remote state key retained |
+| `terraform/services/` | Shared application AWS services, identities, secrets and registry |
+| `terraform/platform/` | Cluster add-ons, storage, deployment identities and DNS |
+| `terraform/modules/` | Reusable resource modules, including the generated kOps cluster |
+| `kops/` | Flat editable cluster YAML and optional rendered application manifests |
+| `helm/agribridge/` | One application chart with staging and production values |
+| `monitoring/` | Prometheus/Grafana and Fluent Bit configuration |
+| `.github/workflows/` | Automated checks, image publication and deployment |
+| `scripts/` | Provisioning, deployment, backup recovery and readiness checks |
+| `docs/` | Plan, operations and verification evidence |
+| `docker-compose.yml` | Complete local stack |
 
 ---
 
@@ -17,14 +35,13 @@ Two independent components, each with its own dependency manifest and its own li
 | Path   | Component | Stack |
 |--------|-----------|-------|
 | `api/` | `agribridge-api` — REST API, business logic, data access | Node.js (ESM), Express |
-| `web/` | `agribridge-web` — browser client | React, built by Vite |
+| `frontend/` | `agribridge-web` — browser client | React, built by Vite |
 
 `api/` requires Node.js 20.11.0 or newer, declared in its manifest. Both components carry
 a lockfile; reproducible dependency resolution is expected of you.
 
-There is no build output, no container definition, no orchestration manifest, no pipeline
-definition and no infrastructure code anywhere in this repository. Their absence is the
-assignment: you will produce all of them, with the toolchain set out in §4.
+Container definitions, orchestration, the pipeline and infrastructure now accompany
+the source. They implement the toolchain required in §4.
 
 ---
 
@@ -131,7 +148,7 @@ all of it belongs in your pipeline (§4.4). Both manifests declare scripts for e
 | | Covers | Notes |
 |---|---|---|
 | `api/` | `src/` and `test/` | Node globals declared explicitly |
-| `web/` | `src/` including JSX | React plugin; React version detected |
+| `frontend/` | `src/` including JSX | React plugin; React version detected |
 
 Both enforce the same core rules as **errors** — unused variables, strict equality,
 `prefer-const`, no `var`, mandatory semicolons — and the API adds quote style, trailing

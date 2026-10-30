@@ -36,21 +36,29 @@ jobs:
           cache: npm
           cache-dependency-path: |
             api/package-lock.json
-            web/package-lock.json
-      - run: npm ci --prefix api && npm ci --prefix web
-      - run: npm run lint --prefix api -- --max-warnings=0 && npm run lint --prefix web -- --max-warnings=0
-      - run: npm audit --prefix api --audit-level=high && npm audit --prefix web --audit-level=high
+            frontend/package-lock.json
+      - run: npm ci --prefix api && npm ci --prefix frontend
+      - run: npm run lint --prefix api -- --max-warnings=0 && npm run lint --prefix frontend -- --max-warnings=0
+      - run: npm audit --prefix api --audit-level=high && npm audit --prefix frontend --audit-level=high
       - run: npm run test:coverage --prefix api
       - run: cp api/reports/junit.xml api/reports/unit.xml
       - run: npm run test:integration --prefix api
-      - run: npm run test:coverage --prefix web
-      - run: npm run build --prefix web
+      - run: npm run test:coverage --prefix frontend
+      - run: npm run build --prefix frontend
       - uses: azure/setup-helm@v4.3.1
         with: {version: v3.17.3}
-      - run: helm lint charts/agribridge --set secretArn=validation
+      - run: helm lint helm/agribridge --set secretArn=validation
+      - name: Validate deployment scripts
+        run: bash -n scripts/*.sh
       - uses: hashicorp/setup-terraform@v3
         with: {terraform_version: '1.14.6'}
-      - run: terraform fmt -check -recursive infra
+      - run: terraform fmt -check -recursive terraform
+      - name: Validate Terraform modules without cloud credentials
+        run: |
+          for directory in terraform/bootstrap terraform/cluster terraform/services terraform/platform; do
+            terraform -chdir="$directory" init -backend=false -input=false
+            terraform -chdir="$directory" validate -no-color
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -58,37 +66,30 @@ jobs:
           path: |
             api/reports/
             api/coverage/
-            web/coverage/
+            frontend/coverage/
       - name: Summarize JUnit results
         if: always()
         run: if [ -f scripts/test-summary.py ]; then python3 scripts/test-summary.py >> "$GITHUB_STEP_SUMMARY"; fi
-  staging:
+  publish:
     if: github.event_name != 'pull_request'
     needs: checks
-    environment:
-      name: staging
-      url: https://staging.agribridge.deuces.dev
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     outputs:
       image_tag: ${{ steps.identity.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Log in to your Docker Hub account
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-          aws-region: us-east-1
-      - uses: aws-actions/amazon-ecr-login@v2
-      - uses: azure/setup-helm@v4.3.1
-        with: {version: v3.17.3}
+          username: ${{ vars.DOCKERHUB_USERNAME || 'macroni607' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Resolve deployment and build identity
         id: identity
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME || 'macroni607' }}
         run: |
-          aws ssm get-parameter --name /agribridge/staging/deployment --query Parameter.Value --output text > /tmp/deployment.json
-          echo "API_IMAGE=$(jq -r .api_repository /tmp/deployment.json)" >> "$GITHUB_ENV"
-          echo "WEB_IMAGE=$(jq -r .web_repository /tmp/deployment.json)" >> "$GITHUB_ENV"
+          echo "API_IMAGE=docker.io/$DOCKERHUB_USERNAME/agribridge-api" >> "$GITHUB_ENV"
+          echo "WEB_IMAGE=docker.io/$DOCKERHUB_USERNAME/agribridge-web" >> "$GITHUB_ENV"
           tag="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -106,15 +107,32 @@ jobs:
         run: |
           docker push "$API_IMAGE:$IMAGE_TAG"
           docker push "$WEB_IMAGE:$IMAGE_TAG"
-      - run: bash scripts/deploy.sh staging "$IMAGE_TAG"
       - name: Compose diagnostics
         if: failure()
-        run: docker compose logs --tail=100
+        run: if [ -f .env ]; then docker compose logs --tail=100; fi
       - name: Clean local stack
         if: always()
-        run: docker compose down -v
+        run: if [ -f .env ]; then docker compose down -v; fi
+  staging:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.agribridge.deuces.dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: us-east-1
+      - uses: azure/setup-helm@v4.3.1
+        with: {version: v3.17.3}
+      - run: bash scripts/deploy.sh staging '${{ needs.publish.outputs.image_tag }}'
   production:
-    needs: staging
+    needs: [publish, staging]
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -130,4 +148,4 @@ jobs:
           aws-region: us-east-1
       - uses: azure/setup-helm@v4.3.1
         with: {version: v3.17.3}
-      - run: bash scripts/deploy.sh production '${{ needs.staging.outputs.image_tag }}'
+      - run: bash scripts/deploy.sh production '${{ needs.publish.outputs.image_tag }}'

@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 import yaml
 condition = [{"name": "load-balancer-only", "expression": "object.spec.type == 'LoadBalancer'"}]
-for path in Path('infra/kops/generated/data').glob('*aws-load-balancer*content'):
+for path in Path('terraform/modules/kops-cluster/data').glob('*aws-load-balancer*content'):
     docs = list(yaml.safe_load_all(path.read_text()))
     for doc in docs:
         if not doc or doc.get('kind') != 'MutatingWebhookConfiguration':
