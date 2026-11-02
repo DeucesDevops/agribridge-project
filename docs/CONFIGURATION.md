@@ -27,7 +27,7 @@ role is separate and intentionally has much narrower deployment permissions.
 
 ## 2. Workstation and account setup
 
-The baseline uses Node 22.22.0, Terraform 1.14.6 in CI (root requirement >=1.10),
+The baseline uses Node 22.23.4, Terraform 1.14.6 in CI (root requirement >=1.10),
 kOps 1.36.2, Kubernetes 1.36.6 and Helm >=3.19. Docker Desktop must be running for
 local Compose. Install Python 3 with PyYAML for the provisioning helpers. Install
 Git, AWS CLI v2, kubectl, GitHub CLI and jq as well.

@@ -1,9 +1,16 @@
 # syntax=docker/dockerfile:1
-FROM node:22.22.0-bookworm-slim AS dependencies
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS dependencies
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
-FROM node:22.22.0-bookworm-slim AS runtime
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS runtime
+# Apply available OS fixes and omit build-only package managers from runtime.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm \
+        /usr/local/lib/node_modules/corepack /opt/yarn-v* \
+        /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+        /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
 WORKDIR /app
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
