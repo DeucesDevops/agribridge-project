@@ -3,7 +3,7 @@
  * nothing is read from a file that could be baked into an image.
  *
  * Secrets (DB password, JWT secret) come from Kubernetes Secrets that are
- * themselves populated from AWS Secrets Manager - see charts/agribridge and
+ * themselves populated from AWS Secrets Manager - see helm/agribridge and
  * docs/security-posture.md.
  */
 
