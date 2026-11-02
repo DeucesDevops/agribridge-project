@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
-FROM node:22.22.0-bookworm-slim AS build
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS build
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 RUN npm run build
-FROM nginxinc/nginx-unprivileged:1.28.2-alpine AS runtime
+FROM nginx/nginx-unprivileged:1.30.6-alpine@sha256:44e74ca483234093081138b6d7b6f561d55557756a2deefc3a5056148defeb99 AS runtime
+USER root
+RUN apk upgrade --no-cache
 ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown

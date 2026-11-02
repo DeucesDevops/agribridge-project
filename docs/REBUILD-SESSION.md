@@ -726,3 +726,27 @@ controller readiness and post-install consistency checks above.
 The publication candidate remains local. The next decision is explicit approval
 to commit and push the reviewed coherent source change to main, triggering the
 first CI run and automatic staging-to-production promotion after checks pass.
+
+### Source publication and first scan gate — 2 November
+
+Bernard explicitly approved publication. Published the reviewed tree to main as
+a0c4f90715d27ba5f3404b242c16effb8f5363b8 using the GitHub connector, after matching
+all 236 candidate paths against local review fingerprints and remote Git blobs.
+Local Git metadata remains unchanged because the session has read-only access to
+that metadata; worktree files are preserved. Publication receipt is private under
+.runtime/publication-result.json.
+
+Workflow 41469572694 passed its checks and exact-image functional acceptance,
+including Docker Hub login, but Trivy blocked the API image before publication:
+17 fixable high/critical Debian findings and 41 bundled-tool package findings;
+the reported application dependency targets had none. Staging and production
+were skipped. No vulnerability gate was weakened and no application rollout
+occurred.
+
+Prepared a focused follow-up: Node 22.23.4 in CI/build/runtime, digest-pinned Node
+and maintained NGINX 1.30.6 base images, OS package updates, and removal of unused
+API runtime npm/Corepack/Yarn tools. Entrypoint remains direct node, runtime users
+remain 1000/101, and source/scan gates remain enabled. Node release notes and both
+Docker Hub tags/multi-platform digests were checked against their publishers.
+Actual image acceptance and scan clearance require the next CI run; no local
+Docker verification is claimed for this follow-up.

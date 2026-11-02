@@ -43,7 +43,7 @@ The stopped pre-existing instances are left untouched.
 
 Install AWS CLI, Terraform >=1.10, kOps 1.36.2, kubectl, Helm >=3.19, jq, Python 3 with
 PyYAML, and GitHub CLI. Authenticate AWS and GitHub outside this repository.
-Use Node 22.22.0 for builds and tests. Route 53 must have a public delegated zone
+Use Node 22.23.4 for builds and tests. Route 53 must have a public delegated zone
 `agribridge.deuces.dev`; the existing zone is adopted into Terraform. In a new
 account, delegate the nameservers Terraform creates at the parent DNS provider.
 Complete [the configuration checklist](CONFIGURATION.md), including Docker Hub
