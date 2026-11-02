@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: agribridge
+  namespace: argocd
+spec:
+  description: Applications in Terraform-created environment namespaces
+  sourceRepos:
+    - https://github.com/DeucesDevops/agribridge-project.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: agribridge-staging
+    - server: https://kubernetes.default.svc
+      namespace: agribridge-production
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: '', kind: ConfigMap}
+    - {group: '', kind: Secret}
+    - {group: '', kind: Service}
+    - {group: '', kind: ServiceAccount}
+    - {group: '', kind: PersistentVolumeClaim}
+    - {group: apps, kind: Deployment}
+    - {group: apps, kind: StatefulSet}
+    - {group: batch, kind: Job}
+    - {group: batch, kind: CronJob}
+    - {group: networking.k8s.io, kind: Ingress}
+    - {group: networking.k8s.io, kind: NetworkPolicy}
+    - {group: policy, kind: PodDisruptionBudget}
+    - {group: external-secrets.io, kind: SecretStore}
+    - {group: external-secrets.io, kind: ExternalSecret}
+    - {group: monitoring.coreos.com, kind: ServiceMonitor}
+    - {group: monitoring.coreos.com, kind: PrometheusRule}

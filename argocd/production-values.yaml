@@ -1,0 +1,19 @@
+# Generated from Terraform-published non-secret metadata; images are managed by CI.
+releaseEnabled: false
+requireImageDigests: true
+hostname: production.agribridge.deuces.dev
+region: us-east-1
+secretArn: arn:aws:secretsmanager:us-east-1:237258628535:secret:agribridge-production/runtime-v2-BiYxcH
+api:
+  repository: docker.io/macroni607/agribridge-api
+  tag: awaiting-first-ci-build
+  digest: ''
+web:
+  repository: docker.io/macroni607/agribridge-web
+  tag: awaiting-first-ci-build
+  digest: ''
+backup:
+  enabled: true
+  bucket: agribridge-backups-237258628535
+  role: arn:aws:iam::237258628535:role/agribridge-production-backup
+  prefix: production

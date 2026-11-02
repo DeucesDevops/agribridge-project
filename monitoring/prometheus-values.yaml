@@ -1,0 +1,19 @@
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: agribridge-gp3
+    size: 2Gi
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: agribridge-gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi

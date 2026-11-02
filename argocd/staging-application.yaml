@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agribridge-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: agribridge
+  source:
+    repoURL: https://github.com/DeucesDevops/agribridge-project.git
+    targetRevision: main
+    path: helm/agribridge
+    helm:
+      releaseName: agribridge
+      valueFiles:
+        - values-staging.yaml
+        - ../../argocd/staging-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agribridge-staging
+  revisionHistoryLimit: 10
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+      allowEmpty: false
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}
