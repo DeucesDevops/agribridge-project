@@ -1,5 +1,9 @@
 # AgriBridge staged rebuild
 
+Current status: AWS runtime shut down on 2 November 2026 at Bernard's request.
+This request also authorizes publication of the outstanding source and evidence.
+The stage records below are historical; see [shutdown details](SHUTDOWN-2026-11-02.md).
+
 Started 1 November 2026. This is the approval checklist for the new rebuild;
 the earlier deployment records remain historical evidence.
 
@@ -750,3 +754,134 @@ remain 1000/101, and source/scan gates remain enabled. Node release notes and bo
 Docker Hub tags/multi-platform digests were checked against their publishers.
 Actual image acceptance and scan clearance require the next CI run; no local
 Docker verification is claimed for this follow-up.
+
+### First end-to-end GitOps release verified — 2 November
+
+Published image follow-up eea3e3ba44aa53b095971f3f284c2bc7366644e0. Workflow
+41470632352 completed successfully: checks, publish, staging and production all
+passed. Both images passed functional acceptance and the unchanged Trivy gate.
+CI committed staging as b52f2ab80df9cf3ad30283c5e3e088443c1c816f and production as
+d4ecba9b46dc18e0a334d49e0f9c99faef29035c. Bernard subsequently reported the Argo
+operation as Succeeded: successfully synced (no more tasks).
+
+Independent public HTTPS reads confirmed 200 for /readyz and /version in both
+environments, healthy database/cache checks, degraded false, and identical
+gitSha/imageTag identifying the above source and run attempt 1. GitHub reads
+confirmed both environment values enable the release and pin the same digests:
+API sha256:d2bbca13851383496914961fe1fad40ceea550f7054a91b5b6e2509d55aed584;
+web sha256:093248810263c826a3ceb73119279ef751302319695cc95d3f75c1c8974a2de4.
+Copied those exact non-secret values into the local worktree so a later metadata
+render preserves the live release selection. Local Git metadata remains at the
+pre-publication base; normal-terminal fetch and mixed reset to the published
+production commit will align that metadata while preserving worktree files.
+
+The release pipeline is operational. Detailed live runtime-secret/migration/login
+acceptance, current Kubernetes resource/PVC evidence, and Git-based rollback
+evidence are still pending; do not claim full stage 6 evidence complete yet.
+
+### Staging Argo resource evidence supplied — 2 November
+
+Bernard supplied the full agribridge-staging Application YAML, reconciled at
+15:30:08 UTC. Current status is Synced at production-promotion Git revision
+d4ecba9b46dc18e0a334d49e0f9c99faef29035c and Healthy. Its automated operation
+completed successfully at 15:26:44 UTC after one retry, deploying the staging
+release revision b52f2ab80df9cf3ad30283c5e3e088443c1c816f.
+
+Resource evidence includes validated SecretStore, synced ExternalSecret, synced
+application Deployments/StatefulSet/Ingress and monitoring definitions, and a
+successful PostSync seed Job. API/web workload image digests match the verified
+CI release. This resolves staging sync/health and secret-delivery status evidence.
+The InsufficientPods messages belong to the earlier operation result; the supplied
+current application health is Healthy. No current PDB condition was supplied.
+The backup CronJob exists but its operation result says it has not been scheduled;
+creation is not backup/restore proof. Detailed migrations/login acceptance in both
+environments and Git-based rollback evidence remain pending.
+
+### Live application acceptance passed in both environments — 2 November
+
+Bernard supplied the outputs of scripts/verify-application.sh for staging and
+production. Both finished with runtime secrets, migrations, HTTPS and exact build
+identity passed. The staging script also verifies seeded login/session behavior
+and Secure/HttpOnly cookies without printing credentials.
+
+Both SecretStores are Valid/Ready and ExternalSecrets SecretSynced/Ready. All
+reported application pods are ready/running with zero restarts. Staging has two
+API and two web replicas; production has three API and two web replicas. Both
+PostgreSQL StatefulSets and API/web rollouts completed. Each environment has one
+Bound 20 GiB RWO agribridge-gp3 claim: staging pvc-18abdf7d-190d-428a-8d82-621b52af1598,
+production pvc-3da7942f-00fe-4ecd-8215-6c64b172e815. This supplies PVC binding evidence;
+it is not a live database replacement or backup/restore demonstration.
+
+Detailed application acceptance is complete. Only Git-based rollback evidence
+remains for stage 6. The [rollback review](../argocd/ROLLBACK-REVIEW.md) prepares a
+second gated release, a staging-only return to the first verified digests, and
+restoration of staging to the second release. It states explicitly that the
+second normal workflow also promotes production. No extra dispatch or rollback
+has been performed while preparing this review.
+
+### Stage 6 rollback, restoration and acceptance completed — 2 November
+
+Bernard approved the additional live demonstration. Workflow 41473944213 built
+the second release from d4ecba9b46dc18e0a334d49e0f9c99faef29035c and passed all
+four jobs. Second-release production commit is 2198cb0e89cbf59ce45acb65662ade593482fc90.
+A tool usage/approval-review failure paused independent verification before any
+rollback mutation. Bernard then asked to continue; tool access resumed. Temporary
+client DNS/timeouts recovered, and six consecutive HTTPS observations confirmed
+both sites on the second release before rollback.
+
+Rollback commit 12083b434d919e717c9931d8dc28ca5c5c854f3a changed only staging's
+image selections to the first verified release. The branch update used an
+expected-head check without force. Kubernetes access became available, allowing
+direct collection of Argo Synced/Healthy/Succeeded status, operation image digests
+and history. The staging acceptance script passed during rollback, including
+secret presence, migrations, HTTPS identity and seeded secure-session login.
+Six consecutive public HTTPS observations from an API pod confirmed staging on
+the first release while production remained on the second.
+
+Restore commit e78bc34fc86dc956c11c1ba69730370ad043a97e restored the exact verified
+second-release Git tree; its sole file diff was staging-values.yaml. Both full
+environment acceptance scripts then passed. Final live Application metadata
+shows both Synced/Healthy, and staging history records both rollback and restore.
+All API/web/Redis Deployment ready replicas match desired counts and both
+PostgreSQL StatefulSets are ready. The original staging/production 20 GiB Bound
+PVC identities are unchanged. No database schema or volume rollback occurred.
+
+The [rollback review/evidence](../argocd/ROLLBACK-REVIEW.md) records exact IDs and
+the scope of proof. Raw non-secret evidence is private under
+.runtime/rollback-demonstration/. Local environment files match the current
+published digests. Documentation updates remain local for the later evidence/Git
+review; local Git metadata still needs a normal-terminal fetch/alignment with
+the published history while preserving these worktree edits.
+
+Stage 6 is complete. Stage 7 is the monitoring/logging/alert demonstration;
+backup/restore and final assessment evidence remain for later stages.
+
+### Stage 7 baseline, logs and synthetic alert demonstrated — 2 November
+
+Live Prometheus API reads confirm 30 targets: 27 up and three kube-proxy targets
+connection-refused on port 10249. All five API replicas are up, with current
+second-release build metrics. API server, kubelets, CoreDNS, node-exporter and
+kube-state-metrics scrape successfully. Default controller-manager/scheduler
+missing-target alerts are also firing; their component pods are Running.
+
+Grafana health reports database ok. Its provisioned default datasource has the
+correct internal Prometheus URL, and a query from the Grafana pod returns the
+expected 2 staging / 3 production API targets. Fresh correlated /version requests
+from both environments reached CloudWatch with request ID
+stage7-8b451a47-d064-489b-ba43-2d27e8cdef45, HTTP 200 and correct namespace metadata.
+
+A uniquely named temporary info-level PrometheusRule was created in monitoring
+after checking that Alertmanager had only a null receiver and no external
+notification integration. It fired in Prometheus and Alertmanager, then resolved
+when its expression was made false. The test rule was removed in cleanup. No
+application outage or external person-directed message was involved.
+
+Prepared two local fixes: namespace-scoped API availability with a missing-target
+fallback, and monitoring values excluding the currently unsupported kOps component
+collectors. Four real PromQL-engine cases demonstrate the corrected behavior and
+the old staging-outage masking bug. All 13 release/render checks, Helm lint and
+whitespace checks passed. No source was published and no platform apply occurred.
+The [Stage 7 review](../monitoring/STAGE7-REVIEW.md) records the collector coverage
+tradeoff, evidence and next saved-plan/publication decisions. Raw observations are
+private under .runtime/observability/. Stage 7 remains in progress pending those
+deployments, rechecks and logged-in dashboard evidence.

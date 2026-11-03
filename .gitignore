@@ -16,3 +16,6 @@ kubedefs/*-rendered.yaml
 
 # Regenerate cluster Terraform privately; bootstrap material may be sensitive.
 terraform/generated/
+
+# Temporary image-generation duplicates; keep the curated roadmap in docs/images/.
+generated_images/

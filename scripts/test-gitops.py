@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -195,6 +196,20 @@ class RenderTests(unittest.TestCase):
             self.assertEqual(claim["storageClassName"], "agribridge-gp3")
             self.assertEqual(claim["resources"]["requests"]["storage"], "20Gi")
             self.assertEqual(("Job", "agribridge-seed") in resources, environment == "staging")
+
+    def test_backup_upload_command_has_a_valid_s3_destination(self):
+        stub = 'aws() { [ "$#" -eq 5 ] || return 90; [ "$1" = s3 ] || return 91; [ "$2" = cp ] || return 92; printf "%s\\n" "$4"; }\n'
+        for environment in ("staging", "production"):
+            with self.subTest(environment=environment):
+                rendered = self.render(environment)
+                self.assertEqual(rendered.returncode, 0, rendered.stderr)
+                job = next(doc for doc in yaml.safe_load_all(rendered.stdout) if doc and doc["kind"] == "CronJob")
+                command = job["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["args"][0]
+                result = subprocess.run(["sh", "-ec", stub + command], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                values = yaml.safe_load((ROOT / "argocd" / (environment + "-values.yaml")).read_text())
+                prefix = "s3://" + values["backup"]["bucket"] + "/" + values["backup"]["prefix"] + "/"
+                self.assertRegex(result.stdout.strip(), "^" + re.escape(prefix) + r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.dump$")
 
     def test_workflow_deployment_uses_git_and_has_no_cluster_credentials(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/delivery.yaml").read_text())

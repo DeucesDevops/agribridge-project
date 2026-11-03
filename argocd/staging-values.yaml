@@ -5,16 +5,16 @@ region: us-east-1
 secretArn: arn:aws:secretsmanager:us-east-1:237258628535:secret:agribridge-staging/runtime-v2-T5AOOA
 api:
   repository: docker.io/macroni607/agribridge-api
-  tag: eea3e3ba44aa53b095971f3f284c2bc7366644e0-41470632352-1
-  digest: sha256:d2bbca13851383496914961fe1fad40ceea550f7054a91b5b6e2509d55aed584
+  tag: 2a353541f5af0c5b2d44910056e861cb048b6adf-41481887330-1
+  digest: sha256:e9ec725ac0274cb0ef7b643f496405836fb78918ee27639e7dfdf86a520db970
 web:
   repository: docker.io/macroni607/agribridge-web
-  tag: eea3e3ba44aa53b095971f3f284c2bc7366644e0-41470632352-1
-  digest: sha256:093248810263c826a3ceb73119279ef751302319695cc95d3f75c1c8974a2de4
+  tag: 2a353541f5af0c5b2d44910056e861cb048b6adf-41481887330-1
+  digest: sha256:bbadf2b7cc370ea59fcd011bae1146b6b43953e7988e92e9c4e5407b99cf2100
 backup:
   enabled: true
   bucket: agribridge-backups-237258628535
   role: arn:aws:iam::237258628535:role/agribridge-staging-backup
   prefix: staging
 release:
-  gitSha: eea3e3ba44aa53b095971f3f284c2bc7366644e0
+  gitSha: 2a353541f5af0c5b2d44910056e861cb048b6adf
