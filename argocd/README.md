@@ -1,9 +1,14 @@
 # Argo CD GitOps
 
-Stage 6 source is prepared and tested locally. Argo CD and its bootstrap release
+Stage 6 is complete. Argo CD and its bootstrap release
 were installed on 2 November 2026. All reported Argo pods are ready and the
-refreshed platform plan reports no changes. Source publication and the first
-application workflow run remain pending.
+refreshed platform plan reports no changes. Source is published and workflow
+41470632352 and 41473944213 passed all four jobs. Both environments respond over HTTPS with
+healthy readiness checks and the same build; their Git values pin identical
+published image digests. Detailed runtime acceptance passed in both environments;
+A Git-based rollback returned staging to the first verified images, then restored
+the second release. Both Applications are Synced/Healthy and both original database
+claims remain bound. See [the rollback evidence](ROLLBACK-REVIEW.md).
 
 Terraform installed the controller and the bootstrap Helm release containing
 project.yaml and both Application definitions. GitHub Actions will test, scan

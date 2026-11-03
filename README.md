@@ -2,22 +2,22 @@
 
 ## Deployment status — 2 November 2026
 
-The rebuilt AWS services and three-node kOps cluster are running. External Secrets,
-NGINX ingress, monitoring and logging passed their platform checks; Terraform's
-cluster, services and platform consistency checks reported no changes.
-Argo CD and its bootstrap release are installed; all five reported Argo pods
-are ready, and the refreshed platform plan reports no changes. Reviewed source
-publication and the first application CI/CD run remain pending. Stage 6 source
-passed local acceptance. See the
-[session record](docs/REBUILD-SESSION.md) and [GitOps runbook](argocd/README.md).
-The URLs below have DNS/TLS infrastructure but await the first application release.
+The AWS deployment has been shut down at the owner's request to stop ongoing
+compute, load-balancer and EBS volume charges. Staging, production, Argo CD and
+monitoring are offline. DNS zones, TLS certificates, recovery data and small
+supporting services are retained. See the [shutdown record](docs/SHUTDOWN-2026-11-02.md)
+for the verified inventory and rebuild precautions.
+
+The CI/CD releases, Git-based rollback/restore and live monitoring observations
+are recorded in the [session record](docs/REBUILD-SESSION.md) and
+[GitOps runbook](argocd/README.md). These are historical deployment evidence.
 
 A grain marketplace connecting smallholder farmers and institutional buyers.
 React/Vite frontend, Express API, PostgreSQL and Redis; deployed to a kOps cluster
 on AWS with Terraform, Helm and GitHub Actions.
 
-- [Staging application](https://staging.agribridge.deuces.dev)
-- [Production application](https://production.agribridge.deuces.dev)
+- Staging (offline): [application URL](https://staging.agribridge.deuces.dev)
+- Production (offline): [application URL](https://production.agribridge.deuces.dev)
 - [Rebuild this project, one step/chat at a time](docs/REBUILD-GUIDE.md)
 - [All inputs and configuration to supply](docs/CONFIGURATION.md)
 - [Current staged rebuild and approval checklist](docs/REBUILD-SESSION.md)

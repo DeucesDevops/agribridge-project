@@ -1,13 +1,17 @@
 # Stage 6 — CI/CD and Argo CD
 
-Status on 2 November 2026: source prepared locally; thirteen release/render checks
+Status on 2 November 2026: stage 6 complete; thirteen release/render checks
 passed. The full changed-image local acceptance, pinned upstream chart render and
 GitHub access/credential-name preflight also passed. The saved two-addition
 controller/bootstrap plan is reviewed in [PLAN-REVIEW.md](PLAN-REVIEW.md).
 The controller and bootstrap apply completed with two additions. All reported
-Argo pods are ready and a refreshed platform plan reports no changes. Reviewed
-source publication, a successful live workflow and application acceptance
-remain pending. Stage 5's platform Helm
+Argo pods are ready and a refreshed platform plan reports no changes. Source is
+published and workflows 41470632352 and 41473944213 passed checks, image publication, staging and
+production. Both public readiness/version endpoints return 200 and identify the
+same build; Git environment values pin identical image digests. Detailed runtime
+acceptance passed in both environments. Git-based staging rollback and restoration
+passed, with both Applications Synced/Healthy and the original database claims intact.
+See [the rollback demonstration review](ROLLBACK-REVIEW.md). Stage 5's platform Helm
 releases, workloads, monitoring PVCs and no-change plan have passed.
 
 ## Ownership
