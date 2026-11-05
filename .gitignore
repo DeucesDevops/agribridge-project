@@ -1,8 +1,11 @@
 node_modules/
+internal-docs/
 __pycache__/
 *.py[cod]
 dist/
 coverage/
+.scannerwork/
+.sonar/
 .env
 reports/
 .terraform/

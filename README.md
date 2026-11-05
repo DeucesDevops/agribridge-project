@@ -19,6 +19,7 @@ on AWS with Terraform, Helm and GitHub Actions.
 - Staging (offline): [application URL](https://staging.agribridge.deuces.dev)
 - Production (offline): [application URL](https://production.agribridge.deuces.dev)
 - [Rebuild this project, one step/chat at a time](docs/REBUILD-GUIDE.md)
+- [Detailed end-to-end reproduction guide](docs/COMPLETE-REPRODUCTION-GUIDE.md)
 - [All inputs and configuration to supply](docs/CONFIGURATION.md)
 - [Current staged rebuild and approval checklist](docs/REBUILD-SESSION.md)
 
@@ -35,6 +36,7 @@ on AWS with Terraform, Helm and GitHub Actions.
 | `argocd/` | Argo CD project, applications, controller values and CI-managed environment image selections |
 | `helm/agribridge/` | One application chart, with staging and production values |
 | `monitoring/` | Prometheus/Grafana and Fluent Bit configuration |
+| `sonarqube/` | Local code-quality server, coverage import and optional CI quality gate |
 | `.github/workflows/` | Checks, Docker Hub publication and deployment |
 | `scripts/` | Infrastructure, deployment and operations automation |
 | `docs/` | Configuration, rebuild sequence, operations and evidence |
@@ -75,6 +77,12 @@ promotion; otherwise it follows staging automatically. This path still requires
 its first successful live run. Runtime secrets come from AWS Secrets Manager
 through External Secrets.
 
+SonarQube is prepared as an optional quality gate in the workflow's `checks` job,
+before image publication. It stays disabled until a reachable server and GitHub
+settings are supplied. You can run it locally without AWS, or use the separate
+analysis-only workflow without releasing the application. See the
+[SonarQube guide](sonarqube/README.md) for setup and coverage limitations.
+
 Route 53 points to one AWS Network Load Balancer. ACM terminates HTTPS, and
 maintained F5 NGINX OSS routes requests into the application. Prometheus/Grafana
 collect metrics; Fluent Bit sends application logs to CloudWatch.
@@ -88,6 +96,7 @@ collect metrics; Fluent Bit sends application logs to CloudWatch.
 | Understand or change Terraform | [Terraform guide](terraform/README.md) |
 | Deploy, inspect dashboards, roll back or restore | [Operations](docs/OPERATIONS.md) |
 | See what has actually been verified | [Verification](docs/VERIFICATION.md) |
+| Run SonarQube locally or enable its CI gate | [SonarQube](sonarqube/README.md) |
 | Read the original project requirements | [Assessment](docs/ASSESSMENT.md) |
 
 Staging includes demo accounts; production is deliberately unseeded. Retrieve the
