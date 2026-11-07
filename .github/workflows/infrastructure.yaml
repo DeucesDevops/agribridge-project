@@ -168,9 +168,11 @@ jobs:
             .runtime/automation terraform/generated/kops
           key="automation-plans/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/plan.tgz"
           aws s3 cp .runtime/automation-plan.tgz "s3://$STATE_BUCKET/$key" --sse AES256 --only-show-errors
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-          echo "checksum=$(sha256sum .runtime/automation-plan.tgz | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "workspace=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          {
+            echo "key=$key"
+            echo "checksum=$(sha256sum .runtime/automation-plan.tgz | cut -d ' ' -f1)"
+            echo "workspace=$GITHUB_WORKSPACE"
+          } >> "$GITHUB_OUTPUT"
           printf '\nPrivate plan bundle: s3://%s/%s\nReview plan.txt before approving the infrastructure environment.\n' \
             "$STATE_BUCKET" "$key" >> "$GITHUB_STEP_SUMMARY"
       - name: Remove private runner files
