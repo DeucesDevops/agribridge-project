@@ -1,0 +1,6 @@
+api:
+  replicas: 3
+web:
+  replicas: 2
+config:
+  SEED_DEMO_DATA: 'false'

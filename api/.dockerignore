@@ -1,9 +1,6 @@
-*
-!package.json
-!package-lock.json
-!src/
-!src/**
-!test/
-!test/**
-!eslint.config.js
-!vitest.config.js
+node_modules
+dist
+coverage
+reports
+.env*
+*.log

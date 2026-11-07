@@ -1,0 +1,22 @@
+# Private ClusterIP UI; use kubectl port-forward for administrator access.
+fullnameOverride: argocd
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  enabled: false
+server:
+  replicas: 1
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+redis-ha:
+  enabled: false
+configs:
+  cm:
+    application.resourceTrackingMethod: annotation
+    timeout.reconciliation: 60s
+  params:
+    server.insecure: false

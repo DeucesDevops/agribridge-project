@@ -1,34 +1,26 @@
 # syntax=docker/dockerfile:1
-FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS base
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS dependencies
 WORKDIR /app
-
-FROM base AS production-deps
-COPY package.json package-lock.json ./
+COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
-
-FROM base AS test
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
-COPY --chown=1000:1000 src ./src
-COPY --chown=1000:1000 test ./test
-COPY eslint.config.js vitest.config.js ./
-RUN mkdir -p /app/node_modules/.vite && chown 1000:1000 /app /app/node_modules/.vite
-USER 1000:1000
-CMD ["npm", "run", "test:coverage"]
-
-FROM base AS runtime
-ARG APP_VERSION=1.0.0
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS runtime
+# Apply available OS fixes and omit build-only package managers from runtime.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm \
+        /usr/local/lib/node_modules/corepack /opt/yarn-v* \
+        /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+        /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
+WORKDIR /app
+ARG APP_VERSION=dev
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 ARG IMAGE_TAG=local
-ENV APP_VERSION=${APP_VERSION} GIT_SHA=${GIT_SHA} BUILD_DATE=${BUILD_DATE} IMAGE_TAG=${IMAGE_TAG}
-LABEL org.opencontainers.image.version=${APP_VERSION} \
-      org.opencontainers.image.revision=${GIT_SHA} \
-      org.opencontainers.image.created=${BUILD_DATE}
-COPY --from=production-deps /app/node_modules ./node_modules
-COPY package.json ./
-COPY src ./src
+ENV NODE_ENV=production APP_VERSION=$APP_VERSION GIT_SHA=$GIT_SHA BUILD_DATE=$BUILD_DATE IMAGE_TAG=$IMAGE_TAG
+LABEL org.opencontainers.image.revision=$GIT_SHA org.opencontainers.image.version=$APP_VERSION org.opencontainers.image.created=$BUILD_DATE
+COPY --from=dependencies --chown=1000:1000 /app/node_modules ./node_modules
+COPY --chown=1000:1000 package.json ./
+COPY --chown=1000:1000 src ./src
 USER 1000:1000
 EXPOSE 3000
-STOPSIGNAL SIGTERM
 CMD ["node", "src/server.js"]
