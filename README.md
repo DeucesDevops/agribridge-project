@@ -1,87 +1,95 @@
 # AgriBridge
 
-A grain marketplace connecting farmers and buyers, used to demonstrate a complete
-DevOps delivery process: React/Vite frontend, Express API, PostgreSQL and Redis.
+## Deployment status — 2 November 2026
 
-The AWS deployment was shut down on 2 November 2026. Application delivery,
-infrastructure and maintenance now have separate GitHub Actions workflows. These
-workflow changes have not yet been exercised against AWS; local validation is
-recorded in [VERIFICATION.md](docs/VERIFICATION.md). Dated records in
-[docs/evidence](docs/evidence/) describe earlier deployments, not current uptime.
+The rebuilt AWS services and three-node kOps cluster are running. External Secrets,
+NGINX ingress, monitoring and logging passed their platform checks; Terraform's
+cluster, services and platform consistency checks reported no changes.
+Argo CD and its bootstrap release are installed; all five reported Argo pods
+are ready, and the refreshed platform plan reports no changes. Reviewed source
+publication and the first application CI/CD run remain pending. Stage 6 source
+passed local acceptance. See the
+[session record](docs/REBUILD-SESSION.md) and [GitOps runbook](argocd/README.md).
+The URLs below have DNS/TLS infrastructure but await the first application release.
 
-## How delivery works
+A grain marketplace connecting smallholder farmers and institutional buyers.
+React/Vite frontend, Express API, PostgreSQL and Redis; deployed to a kOps cluster
+on AWS with Terraform, Helm and GitHub Actions.
 
-1. Docker Compose runs the same application Dockerfiles locally.
-2. GitHub Actions checks both components, tests against real PostgreSQL, enforces
-   coverage, builds and exercises the images, scans them and publishes to Docker Hub.
-3. Actions commits the published image digests to the staging GitOps values.
-4. Argo CD renders one Helm chart and reconciles staging. Actions verifies HTTPS,
-   readiness and the running commit before promoting the same digests to production.
-5. Terraform creates the AWS infrastructure and installs cluster controllers.
-   External Secrets delivers Secrets Manager values at runtime. Prometheus/Grafana
-   collect metrics and Fluent Bit sends logs to CloudWatch.
+- [Staging application](https://staging.agribridge.deuces.dev)
+- [Production application](https://production.agribridge.deuces.dev)
+- [Rebuild this project, one step/chat at a time](docs/REBUILD-GUIDE.md)
+- [All inputs and configuration to supply](docs/CONFIGURATION.md)
+- [Current staged rebuild and approval checklist](docs/REBUILD-SESSION.md)
 
-## Repository layout
+## Where things belong
 
-| Location | Responsibility |
-|---|---|
-| `frontend/`, `api/` | Application source, tests and Dockerfiles |
-| `.github/workflows/delivery.yaml` | Checks, image publication, staging and production releases |
-| `.github/workflows/infrastructure.yaml` | Manually requested Terraform plans, approved applies and teardown |
-| `.github/workflows/operations.yaml` | Live checks, backups, isolated restore tests and staging resilience |
-| `.github/actions/cloud-tools/` | Shared tool setup and AWS OIDC authentication for cloud jobs |
-| `terraform/` | AWS services, bootstrap, cluster, platform and reusable modules |
-| `kubedefs/` | kOps cluster definition and ingress-controller configuration |
-| `helm/agribridge/` | One application chart; component templates and environment values |
-| `helm/argocd-bootstrap/` | Terraform's installation of the Argo CD project and Applications |
-| `argocd/` | Argo CD configuration and CI-managed runtime references/image selections |
-| `monitoring/` | Metrics and log collection configuration |
-| `sonarqube/` | Local analysis server and optional CI quality gate |
-| `scripts/` | Five focused helpers and their tests; workflows own cloud sequencing |
-| `docs/` | Requirements, architecture, setup, operations and dated evidence |
+| Folder/file | Purpose |
+|-------------|---------|
+| `frontend/` | Browser application, tests, Dockerfile and Nginx routing |
+| `api/` | API application, migrations, tests and Dockerfile |
+| `terraform/` | AWS application services; `bootstrap/`, `cluster/` and `platform/` run the dependent setup steps |
+| `terraform/modules/` | Reusable Terraform service definitions |
+| `terraform/generated/kops/` | Generated cluster code; regenerate rather than hand-edit |
+| `kubedefs/` | Flat cluster YAML, ingress values and optional rendered manifests |
+| `argocd/` | Argo CD project, applications, controller values and CI-managed environment image selections |
+| `helm/agribridge/` | One application chart, with staging and production values |
+| `monitoring/` | Prometheus/Grafana and Fluent Bit configuration |
+| `.github/workflows/` | Checks, Docker Hub publication and deployment |
+| `scripts/` | Infrastructure, deployment and operations automation |
+| `docs/` | Configuration, rebuild sequence, operations and evidence |
+| `docker-compose.yml` | Complete local application stack |
+| `Makefile` | Short commands for common tasks |
 
-Terraform owns infrastructure and controller installation. Argo CD owns the
-application resources produced by Helm. Application YAML is maintained in the
-chart; `make render` lets you inspect it without maintaining a second copy.
+Infrastructure runs in this order: **bootstrap → cluster → AWS services →
+Kubernetes platform**. Each step keeps its existing state; generated cluster files stay
+separate. [Terraform's starting guide](terraform/README.md) explains each part.
 
-## Start locally
+## Common commands
 
 ```sh
-cp .env.example .env
+make help
+cp .env.example .env   # Local-only throwaway values; see configuration guide
 make local
 ```
 
-Open http://localhost:8080. `make stop` retains local database data.
-`make local-verify` creates an isolated disposable stack and exercises integration,
-cache degradation and database persistence. Docker engine access is required.
+For an isolated verification run, use `make local-verify`. It builds throwaway
+images, exercises login and PostgreSQL integration tests, checks cache failure
+and database-volume persistence, then removes only its own test containers and
+volumes. It uses local ports 18080 and 15433 by default; override them with
+`VERIFY_WEB_PORT` and `VERIFY_PG_PORT` if needed. Docker engine access is required.
 
-For helper checks, create a virtual environment and install
-`scripts/requirements.txt`, then run `make check`. `make help` lists local commands.
+Local application: http://localhost:8080. Stop it with `make stop`; local database
+data is retained. For AWS, authenticate AWS and GitHub, complete the configuration
+checklist, then follow the reviewed planning/apply sequence in the session record.
+During this staged rebuild, use the separate planning commands and GitOps runbook.
 
-## Run cloud workflows
+## Release path
 
-Set up the runner, AWS roles, GitHub environments and repository settings described
-in [CONFIGURATION.md](docs/CONFIGURATION.md), then follow
-[REPRODUCTION.md](docs/REPRODUCTION.md). Infrastructure stages run in this order:
-**bootstrap → cluster → services → platform**. Terraform retains the existing state
-keys; the folder refactor does not create new state.
+The prepared workflow checks the code, builds and exercises the images, scans
+them and publishes to Docker Hub. It records published digests in Git for Argo CD
+to deploy with the application chart. After staging passes public HTTPS,
+readiness and build-identity checks, production receives the same digests without
+rebuilding. A configured GitHub production-environment reviewer gate pauses that
+promotion; otherwise it follows staging automatically. This path still requires
+its first successful live run. Runtime secrets come from AWS Secrets Manager
+through External Secrets.
 
-Infrastructure and operations workflows run only when explicitly dispatched from
-`main`. Application delivery runs on application/configuration changes merged into
-`main` and validates pull requests. Infrastructure plans stay in encrypted private
-S3 storage; apply uses the exact saved plan after the configured environment approval.
-
-SonarQube stays optional until a reachable server and credentials are configured.
-For analysis without publication or deployment, dispatch `delivery.yaml` with
-`analysis_only=true`. Local SonarQube requires no AWS resources.
+Route 53 points to one AWS Network Load Balancer. ACM terminates HTTPS, and
+maintained F5 NGINX OSS routes requests into the application. Prometheus/Grafana
+collect metrics; Fluent Bit sends application logs to CloudWatch.
 
 ## Guides
 
-- [Original assessment](docs/ASSESSMENT.md)
-- [Architecture and interview explanation](docs/ARCHITECTURE.md)
-- [Configuration and access prerequisites](docs/CONFIGURATION.md)
-- [Reproduction sequence](docs/REPRODUCTION.md)
-- [Operations, rollback and teardown](docs/OPERATIONS.md)
-- [Validation and limitations](docs/VERIFICATION.md)
+| You want to… | Read |
+|--------------|------|
+| Rebuild or follow this in future chats | [Rebuild guide](docs/REBUILD-GUIDE.md) |
+| Know what values to enter and where | [Configuration checklist](docs/CONFIGURATION.md) |
+| Understand or change Terraform | [Terraform guide](terraform/README.md) |
+| Deploy, inspect dashboards, roll back or restore | [Operations](docs/OPERATIONS.md) |
+| See what has actually been verified | [Verification](docs/VERIFICATION.md) |
+| Read the original project requirements | [Assessment](docs/ASSESSMENT.md) |
 
-Passwords, tokens, state, kubeconfigs and plan bundles never belong in Git.
+Staging includes demo accounts; production is deliberately unseeded. Retrieve the
+staging demo password from Secrets Manager as described in the operations guide.
+No passwords, access tokens, state files or kubeconfigs belong in Git.

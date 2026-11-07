@@ -1,57 +1,71 @@
 # Terraform
 
-GitHub Actions runs the four infrastructure boundaries in dependency order. The
-root remains the entry point for AWS application services; there is no stacks layer.
+Run application AWS services from `terraform/`. Three small folders handle the
+steps that must run before or after those services. There is no `stacks/` layer.
 
-| Order | Directory | Responsibility | Existing S3 state key |
+| Order | Run Terraform in | Creates | State |
 |---|---|---|---|
-| 1 | `bootstrap/` | Persistent state/discovery storage and project DNS | `bootstrap/terraform.tfstate` |
-| 2 | `cluster/` | VPC, EC2 nodes, IAM and kOps add-ons | `kops/terraform.tfstate` |
-| 3 | This directory | Secrets, TLS, registry references, backups, logs and workload IAM | `services/terraform.tfstate` |
-| 4 | `platform/` | Namespaces, storage, ingress, monitoring, logging and Argo CD | `platform/terraform.tfstate` |
+| 1 | `terraform/bootstrap/` | State/discovery buckets and project DNS zone | Local bootstrap state; encrypted recovery copy at `bootstrap/terraform.tfstate` in the state bucket |
+| 2 | `terraform/cluster/` | VPC, EC2 nodes, IAM and generated kOps add-ons | S3 key `kops/terraform.tfstate` |
+| 3 | `terraform/` | Secrets, TLS, registry, backups, logs and delivery IAM | S3 key `services/terraform.tfstate` |
+| 4 | `terraform/platform/` | Kubernetes namespaces, storage, ingress, monitoring and opt-in Argo CD | S3 key `platform/terraform.tfstate` |
 
-The cluster must exist before Terraform connects to its Kubernetes API. Remove
-platform resources while controllers still run, then remove cluster infrastructure.
-Staging/production share one cluster but have separate namespaces, secrets and
-PostgreSQL storage. One control-plane node is a capstone cost tradeoff.
+The separate state boundaries let Terraform create the cluster before connecting
+to its Kubernetes API, and remove the platform while its controllers still run.
+Staging and production share a cluster but use separate namespaces, runtime
+secrets, databases and Helm values. This is a capstone deployment, with one
+control-plane node; it does not provide control-plane high availability.
 
-## Workflow
+`main.tf`, `variables.tf` and `outputs.tf` are the normal starting points.
+`modules/` holds the existing reusable resource definitions. Keep `moved.tf` and
+provider lockfiles: they preserve resource-address history and dependency versions.
+Do not put credentials or Terraform state in Git.
 
-Dispatch `.github/workflows/infrastructure.yaml` from `main`, selecting a stage
-and `plan`, `apply` or `destroy`. An apply/destroy run first creates its saved plan,
-then waits for the configured `infrastructure` environment approval. Full plans
-are encrypted in the private state bucket, not uploaded as Actions artifacts.
-The apply job checks the bundle checksum and applies that exact plan.
+## Review before applying
 
-The initial local bootstrap creates the state bucket once. For this existing
-project, recover its existing authoritative state instead of recreating retained
-resources. Actions generates an ignored `bootstrap/backend_override.tf` to use
-the original S3 recovery key with locking. Once that key is workflow-managed,
-never apply an old workstation copy. See [reproduction](../docs/REPRODUCTION.md).
+Initialize each configuration with its existing backend key. For example, from
+the repository root, after bootstrap has created the protected state bucket and
+the private `.runtime/backend.hcl` file has been prepared:
 
-## Files to edit
+```sh
+terraform -chdir=terraform init -reconfigure \
+  -backend-config=../.runtime/backend.hcl \
+  -backend-config=key=services/terraform.tfstate
+terraform -chdir=terraform plan
 
-- `main.tf`: AWS service/module composition.
-- `providers.tf`: service provider account/region configuration.
-- `variables.tf`, `outputs.tf`: inputs and handoffs.
-- `terraform.tfvars.example`: documented service inputs, without secret values.
-- `modules/`: reusable resource definitions.
-- `kubedefs/cluster.yaml`: authored kOps configuration.
+terraform -chdir=terraform/platform init -reconfigure \
+  -backend-config=../../.runtime/backend.hcl \
+  -backend-config=key=platform/terraform.tfstate
+terraform -chdir=terraform/platform plan \
+  -var-file=../../.runtime/platform.tfvars.json
+```
 
-Keep provider lockfiles, resource addresses and `moved.tf` history intact.
-Directory organization is not a reason to create fresh state or import resources
-under different addresses.
+Supply the account-specific inputs in [CONFIGURATION.md](../docs/CONFIGURATION.md).
+The provisioning scripts currently apply all steps automatically; do not run
+`make provision` or `make resume` during the approval-based preparation stages.
+See [REBUILD-SESSION.md](../docs/REBUILD-SESSION.md) for the current approval gate.
 
-`prepare-cluster.py generate` renders the runner's allowed CIDRs and bootstrap
-outputs, generates `generated/kops/`, keeps providers in the handwritten root and
-preserves the pinned webhook bootstrap fix. It verifies the generated output
-contract instead of silently rewriting the checked-in outputs. Generated cluster
-files stay ignored and travel privately with the exact plan for cluster apply.
+## Generated cluster code
 
-Platform inputs come directly from the services outputs. Services application
-refreshes `argocd/*-values.yaml` from non-secret SSM metadata automatically.
-Runtime secret values are never copied into GitOps files.
+Edit `kubedefs/cluster.yaml`, then generate `terraform/generated/kops/` during the
+approved infrastructure stage. Generated output is excluded from Git. CI validates
+the available handwritten configurations and explicitly defers generated cluster
+validation when that output is absent in its clean checkout.
 
-Runner/access prerequisites and plan review are documented in
-[CONFIGURATION.md](../docs/CONFIGURATION.md). Destruction guards and retained-data
-handling are documented in [OPERATIONS.md](../docs/OPERATIONS.md).
+```sh
+kops update cluster k8s.agribridge.deuces.dev --target terraform --out terraform/generated/kops
+python3 scripts/prepare-kops-module.py
+python3 scripts/patch-kops-bootstrap.py
+```
+
+Preparation keeps provider configuration in `cluster/main.tf`, preserving the
+explicit `aws.files` alias mapping. Do not hand-edit generated resource names.
+
+## Folder migration
+
+The previous four numbered entry points now live in `bootstrap/`, `cluster/`,
+this directory, and `platform/`. Their module labels, resource names, provider
+aliases, backend keys and `moved` blocks are unchanged. Local state and caches
+move with each entry point; run `init -reconfigure` before a future plan to refresh
+local module paths. A directory rename is not a reason to create new state.
+Historical verification documents retain the paths used when their checks ran.
