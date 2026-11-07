@@ -36,6 +36,39 @@ def values_path(environment):
     return Path("argocd") / (environment + "-values.yaml")
 
 
+def configure(environment, metadata_path):
+    """Refresh Terraform-published runtime references without changing a release."""
+    data = json.loads(metadata_path.read_text())
+    account = os.environ.get("EXPECTED_AWS_ACCOUNT_ID", "237258628535")
+    if data["namespace"] != "agribridge-" + environment:
+        raise ValueError("Unexpected environment namespace")
+    if data["region"] != "us-east-1" or data["hostname"] != environment + ".agribridge.deuces.dev":
+        raise ValueError("Unexpected region or hostname")
+    if not data["secret_arn"].startswith(
+        "arn:aws:secretsmanager:us-east-1:" + account + ":secret:agribridge-" + environment + "/runtime-v2-"
+    ):
+        raise ValueError("Unexpected runtime secret identity")
+    if data["backup_bucket"] != "agribridge-backups-" + account:
+        raise ValueError("Unexpected backup bucket")
+    if data["backup_role"] != "arn:aws:iam::" + account + ":role/agribridge-" + environment + "-backup":
+        raise ValueError("Unexpected backup role")
+    path = values_path(environment)
+    values = yaml.safe_load(path.read_text()) if path.exists() else {}
+    values.setdefault("releaseEnabled", False)
+    values["requireImageDigests"] = True
+    for key in ("hostname", "region"):
+        values[key] = data[key]
+    values["secretArn"] = data["secret_arn"]
+    for component, source in (("api", "api_repository"), ("web", "web_repository")):
+        image = values.setdefault(component, {})
+        image["repository"] = data[source]
+        image.setdefault("tag", "awaiting-first-ci-build")
+        image.setdefault("digest", "")
+    values["backup"] = {"enabled": True, "bucket": data["backup_bucket"],
+                        "role": data["backup_role"], "prefix": environment}
+    path.write_text(yaml.safe_dump(values, sort_keys=False))
+
+
 def record(destination):
     images = {}
     for component, variable in (("api", "API_IMAGE"), ("web", "WEB_IMAGE")):
@@ -118,6 +151,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     record_parser = commands.add_parser("record")
     record_parser.add_argument("destination", type=Path)
+    configure_parser = commands.add_parser("configure")
+    configure_parser.add_argument("environment", choices=["staging", "production"])
+    configure_parser.add_argument("metadata", type=Path)
     stage_parser = commands.add_parser("stage")
     stage_parser.add_argument("release", type=Path)
     promote_parser = commands.add_parser("promote")
@@ -126,7 +162,9 @@ def main():
     commit_parser.add_argument("environment", choices=["staging", "production"])
     commit_parser.add_argument("--expected-tag", required=True)
     args = parser.parse_args()
-    if args.command == "record":
+    if args.command == "configure":
+        configure(args.environment, args.metadata)
+    elif args.command == "record":
         record(args.destination)
     elif args.command == "stage":
         stage(args.release)

@@ -1,24 +1,25 @@
-{{- if .Values.releaseEnabled }}
-{{- range $component := list "api" "web" }}
-{{- $settings := index $.Values $component }}
+{{- define "agribridge.workload" -}}
+{{- $component := .component }}
+{{- with .root }}
+{{- $settings := index .Values $component }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ $.Release.Name }}-{{ $component }}
+  name: {{ .Release.Name }}-{{ $component }}
 spec:
   replicas: {{ $settings.replicas }}
   selector:
-    matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+    matchLabels: {app: {{ .Release.Name }}-{{ $component }}}
   strategy:
     rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   template:
     metadata:
-      labels: {app: {{ $.Release.Name }}-{{ $component }}}
+      labels: {app: {{ .Release.Name }}-{{ $component }}}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") $ | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
     spec:
-      serviceAccountName: {{ $.Release.Name }}
+      serviceAccountName: {{ .Release.Name }}
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -33,10 +34,10 @@ spec:
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
-            matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+            matchLabels: {app: {{ .Release.Name }}-{{ $component }}}
       containers:
         - name: {{ $component }}
-          image: {{ include "agribridge.image" (dict "settings" $settings "requireDigest" $.Values.requireImageDigests) | quote }}
+          image: {{ include "agribridge.image" (dict "settings" $settings "requireDigest" .Values.requireImageDigests) | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: {drop: [ALL]}
@@ -49,8 +50,8 @@ spec:
             limits: {cpu: '1', memory: 512Mi}
           {{- if eq $component "api" }}
           envFrom:
-            - configMapRef: {name: {{ $.Release.Name }}-config}
-            - secretRef: {name: {{ $.Release.Name }}-runtime}
+            - configMapRef: {name: {{ .Release.Name }}-config}
+            - secretRef: {name: {{ .Release.Name }}-runtime}
           startupProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 5
@@ -62,7 +63,7 @@ spec:
           {{- else }}
           env:
             - name: API_UPSTREAM
-              value: {{ $.Release.Name }}-api:3000
+              value: {{ .Release.Name }}-api:3000
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
             - {name: nginx-config, mountPath: /etc/nginx/conf.d}
@@ -86,20 +87,20 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $.Release.Name }}-{{ $component }}
-  labels: {app: {{ $.Release.Name }}-{{ $component }}}
+  name: {{ .Release.Name }}-{{ $component }}
+  labels: {app: {{ .Release.Name }}-{{ $component }}}
 spec:
-  selector: {app: {{ $.Release.Name }}-{{ $component }}}
+  selector: {app: {{ .Release.Name }}-{{ $component }}}
   ports:
     - {name: http, port: {{ if eq $component "api" }}3000{{ else }}8080{{ end }}, targetPort: http}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ $.Release.Name }}-{{ $component }}
+  name: {{ .Release.Name }}-{{ $component }}
 spec:
   minAvailable: 1
   selector:
-    matchLabels: {app: {{ $.Release.Name }}-{{ $component }}}
+    matchLabels: {app: {{ .Release.Name }}-{{ $component }}}
 {{- end }}
 {{- end }}

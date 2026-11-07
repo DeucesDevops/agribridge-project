@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import patch
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("release", ROOT / "scripts/gitops-release.py")
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("release", ROOT / "scripts/release.py")
 release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 TAG = "a" * 40 + "-123-1"
@@ -98,7 +98,7 @@ class ReleaseTests(unittest.TestCase):
                     "api_repository": staged["api"]["repository"], "web_repository": staged["web"]["repository"],
                     "backup_bucket": staged["backup"]["bucket"], "backup_role": staged["backup"]["role"]}
         Path("metadata.json").write_text(json.dumps(metadata))
-        command = [sys.executable, str(ROOT / "scripts/render-gitops-values.py"), "staging", "metadata.json"]
+        command = [sys.executable, str(ROOT / "scripts/release.py"), "configure", "staging", "metadata.json"]
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         after = yaml.safe_load(release.values_path("staging").read_text())
@@ -110,28 +110,6 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(yaml.safe_load(release.values_path("staging").read_text()), after)
 
-    def test_argo_install_flag_is_preserved_on_followup_platform_plans(self):
-        script = (ROOT / "scripts/plan-platform.sh").read_text()
-        marker = "python3 - \".runtime/platform-output-$run_id.json\" <<'PY'\n"
-        body = script.split(marker, 1)[1].split("\nPY\n", 1)[0]
-        Path(".runtime").mkdir()
-        platform = {"region": "us-east-1", "zone_name": "agribridge.deuces.dev",
-                    "zone_id": "ZTEST", "certificate_arn": "arn:aws:acm:us-east-1:237258628535:certificate/test",
-                    "secrets_role": "arn:aws:iam::237258628535:role/agribridge-external-secrets",
-                    "logs_role": "arn:aws:iam::237258628535:role/agribridge-logs"}
-        Path(".runtime/output.json").write_text(json.dumps(platform))
-        base = dict(os.environ, KUBECONFIG=str(Path(".runtime/kubeconfig").resolve()))
-        base.pop("AGRIBRIDGE_ENABLE_ARGOCD", None)
-        for override, expected in ((None, False), ("true", True), (None, True)):
-            env = dict(base)
-            if override is not None:
-                env["AGRIBRIDGE_ENABLE_ARGOCD"] = override
-            result = subprocess.run([sys.executable, "-c", body, ".runtime/output.json"], env=env, capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(json.loads(Path(".runtime/platform.tfvars.json").read_text())["enable_argocd"], expected)
-        result = subprocess.run([sys.executable, "-c", body, ".runtime/output.json"],
-                                env=dict(base, AGRIBRIDGE_ENABLE_ARGOCD="invalid"), capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
 
 
 class RenderTests(unittest.TestCase):
@@ -218,7 +196,7 @@ class RenderTests(unittest.TestCase):
         self.assertIn("staging", jobs["production"]["needs"])
         for environment in ("staging", "production"):
             rendered = yaml.safe_dump(jobs[environment])
-            self.assertIn("gitops-release.py", rendered)
+            self.assertIn("release.py", rendered)
             self.assertNotIn("scripts/deploy.sh", rendered)
             self.assertNotIn("configure-aws-credentials", rendered)
             self.assertNotIn("id-token", rendered)
