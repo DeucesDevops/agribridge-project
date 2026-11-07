@@ -1,7 +1,0 @@
-# Documentation only; the workflow supplies the required account/discovery inputs.
-region              = "us-east-1"
-expected_account_id = "237258628535"
-discovery_bucket    = "agribridge-oidc-237258628535"
-cluster_name        = "k8s.agribridge.deuces.dev"
-zone_name           = "agribridge.deuces.dev"
-dockerhub_username  = "macroni607"

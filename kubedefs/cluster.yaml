@@ -53,7 +53,7 @@ spec:
   kubelet:
     anonymousAuth: false
   kubernetesApiAccess:
-  # Documentation-only placeholder. infrastructure.yaml supplies the runner/VPN CIDRs
+  # Documentation-only placeholder. plan-cluster.sh supplies your public IP
   # in the ignored runtime manifest before registering the configuration.
   - 203.0.113.1/32
   kubernetesVersion: 1.36.6

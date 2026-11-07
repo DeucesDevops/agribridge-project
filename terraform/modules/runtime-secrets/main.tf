@@ -15,15 +15,12 @@ resource "random_password" "secret" {
 resource "aws_secretsmanager_secret" "app" {
   for_each = var.environments
   name     = lookup(var.secret_names, each.key, "agribridge-${each.key}/runtime")
-  # Retained for reuse across projects, including after compute teardown.
-  lifecycle { prevent_destroy = true }
 }
 
 resource "aws_secretsmanager_secret_version" "app" {
   for_each      = var.environments
   secret_id     = aws_secretsmanager_secret.app[each.key].id
   secret_string = jsonencode({ for k in ["PGPASSWORD", "JWT_SECRET", "SEED_PASSWORD"] : k => random_password.secret["${each.key}-${k}"].result })
-  lifecycle { prevent_destroy = true }
 }
 
 resource "aws_iam_role" "secrets" {
