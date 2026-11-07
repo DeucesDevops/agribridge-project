@@ -1,0 +1,18 @@
+{{- if .Values.releaseEnabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  annotations: {argocd.argoproj.io/sync-wave: "-2"}
+data:
+  {{- range $key, $value := .Values.config }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}
+  annotations: {argocd.argoproj.io/sync-wave: "-2"}
+automountServiceAccountToken: false
+{{- end }}

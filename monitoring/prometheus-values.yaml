@@ -1,0 +1,27 @@
+grafana:
+  enabled: true
+  persistence:
+    enabled: true
+    storageClassName: agribridge-gp3
+    size: 2Gi
+# These kOps component endpoints are not reachable by the cluster's scrapers.
+# API server, kubelets, CoreDNS, node-exporter and kube-state-metrics remain enabled.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: agribridge-gp3
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi

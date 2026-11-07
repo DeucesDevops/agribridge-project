@@ -1,0 +1,47 @@
+# Maintained F5 NGINX OSS controller. TLS terminates at the AWS NLB.
+serviceNameOverride: nginx-ingress-controller
+controller:
+  name: controller
+  nginxplus: false
+  replicaCount: 2
+  enableCustomResources: false
+  enableSnippets: false
+  ingressClass:
+    name: nginx
+    create: true
+    setAsDefaultIngress: false
+  pod:
+    extraLabels:
+      agribridge.dev/ingress: nginx
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          agribridge.dev/ingress: nginx
+  service:
+    type: LoadBalancer
+    loadBalancerClass: service.k8s.aws/nlb
+    externalTrafficPolicy: Cluster
+    # NLB is layer 4: it does not add X-Forwarded-Proto for HTTP redirects.
+    # Publish HTTPS only and forward decrypted traffic to NGINX's HTTP port.
+    httpPort:
+      enable: false
+    httpsPort:
+      enable: true
+      port: 443
+      targetPort: 80
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-name: agribridge-ingress
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: instance
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+      service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "${certificate_arn}"
+      service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+      service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+      service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+  reportIngressStatus:
+    enable: true
+    externalService: nginx-ingress-controller

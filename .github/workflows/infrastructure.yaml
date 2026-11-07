@@ -1,0 +1,243 @@
+name: Infrastructure — plan, apply or destroy
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Run in order bootstrap, cluster, services, platform; destroy in reverse
+        type: choice
+        options: [bootstrap, cluster, services, platform]
+        default: services
+      action:
+        description: Apply and destroy wait for the infrastructure environment approval
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      confirmation:
+        description: For destroy, enter k8s.agribridge.deuces.dev
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: agribridge-cloud-maintenance
+  cancel-in-progress: false
+env:
+  AWS_REGION: us-east-1
+  EXPECTED_AWS_ACCOUNT_ID: '237258628535'
+  TF_VAR_expected_account_id: '237258628535'
+  TF_VAR_discovery_bucket: agribridge-oidc-237258628535
+  STATE_BUCKET: agribridge-tfstate-237258628535
+  CLUSTER_NAME: k8s.agribridge.deuces.dev
+  KOPS_STATE_STORE: s3://kops-state-607
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, agribridge]
+    environment: infrastructure-plan
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 45
+    outputs:
+      directory: ${{ steps.stage.outputs.directory }}
+      key: ${{ steps.stage.outputs.key }}
+      bundle: ${{ steps.bundle.outputs.key }}
+      checksum: ${{ steps.bundle.outputs.checksum }}
+      workspace: ${{ steps.bundle.outputs.workspace }}
+    env:
+      STAGE: ${{ inputs.stage }}
+      ACTION: ${{ inputs.action }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      AGRIBRIDGE_API_CIDRS: ${{ vars.KUBERNETES_API_CIDRS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloud-tools
+        with:
+          role: ${{ vars.AWS_INFRA_PLAN_ROLE }}
+      - name: Validate request and select the existing state boundary
+        id: stage
+        run: |
+          set -euo pipefail
+          if [ "$ACTION" = destroy ]; then
+            test "$CONFIRMATION" = "$CLUSTER_NAME"
+            test "$STAGE" != bootstrap || { echo '::error::Bootstrap state and DNS are retained'; exit 1; }
+          fi
+          case "$STAGE" in
+            bootstrap) directory=terraform/bootstrap; key=bootstrap/terraform.tfstate ;;
+            cluster) directory=terraform/cluster; key=kops/terraform.tfstate ;;
+            services) directory=terraform; key=services/terraform.tfstate ;;
+            platform) directory=terraform/platform; key=platform/terraform.tfstate ;;
+            *) exit 2 ;;
+          esac
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          # A copied recovery state must exist; never adopt retained resources by guessing.
+          aws s3api head-object --bucket "$STATE_BUCKET" --key bootstrap/terraform.tfstate >/dev/null
+          # Bootstrap starts locally once; Actions uses its existing S3 recovery key with locking.
+          printf 'terraform { backend "s3" {} }\n' > terraform/bootstrap/backend_override.tf
+          terraform -chdir=terraform/bootstrap init -input=false -reconfigure -lockfile=readonly \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$AWS_REGION" \
+            -backend-config=key=bootstrap/terraform.tfstate -backend-config=encrypt=true -backend-config=use_lockfile=true
+          terraform -chdir=terraform/bootstrap output -json > .runtime/automation/bootstrap-outputs.json
+      - name: Prepare the pinned kOps configuration
+        if: inputs.stage == 'cluster'
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$ACTION" = destroy ]; then args+=(--destroy); fi
+          python3 scripts/prepare-cluster.py generate \
+            --outputs .runtime/automation/bootstrap-outputs.json "${args[@]}"
+          terraform fmt -recursive terraform/generated/kops
+      - name: Connect to the existing cluster and consume current service outputs
+        if: inputs.stage == 'platform'
+        run: |
+          set -euo pipefail
+          export KUBECONFIG="$GITHUB_WORKSPACE/.runtime/automation/kubeconfig"
+          kops export kubeconfig "$CLUSTER_NAME" --admin=1h --kubeconfig "$KUBECONFIG"
+          test "$(kubectl config current-context)" = "$CLUSTER_NAME"
+          test "$(kubectl config view --minify -o 'jsonpath={.clusters[0].cluster.server}')" = "https://api.$CLUSTER_NAME"
+          python3 scripts/prepare-cluster.py wait
+          terraform -chdir=terraform init -input=false -reconfigure -lockfile=readonly \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$AWS_REGION" \
+            -backend-config=key=services/terraform.tfstate -backend-config=encrypt=true -backend-config=use_lockfile=true
+          terraform -chdir=terraform output -json platform > .runtime/automation/platform-output.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          platform = json.loads(Path('.runtime/automation/platform-output.json').read_text())
+          Path('.runtime/automation/platform.tfvars.json').write_text(json.dumps({
+              'platform': platform, 'kubeconfig_path': os.environ['KUBECONFIG'],
+              'expected_account_id': os.environ['EXPECTED_AWS_ACCOUNT_ID'],
+              'enable_argocd': True, 'enable_legacy_pipeline': False,
+          }))
+          PY
+      - name: Require platform teardown before removing its dependencies
+        if: inputs.action == 'destroy'
+        run: |
+          set -euo pipefail
+          if [ "$STAGE" = cluster ] || [ "$STAGE" = services ]; then
+            aws s3api list-objects-v2 --bucket "$STATE_BUCKET" --prefix platform/terraform.tfstate \
+              --query "Contents[?Key=='platform/terraform.tfstate'].Key" --output json > .runtime/automation/platform-keys.json
+            if jq -e 'length > 0' .runtime/automation/platform-keys.json >/dev/null; then
+              aws s3 cp "s3://$STATE_BUCKET/platform/terraform.tfstate" .runtime/automation/platform-state.json --only-show-errors
+              jq -e '[.resources[]? | select(.mode == "managed") | .instances[]?] | length == 0' .runtime/automation/platform-state.json >/dev/null \
+                || { echo '::error::Destroy the platform before its services or cluster'; exit 1; }
+            fi
+          else
+            export KUBECONFIG="$GITHUB_WORKSPACE/.runtime/automation/kubeconfig"
+            for namespace in agribridge-staging agribridge-production; do
+              test "$(kubectl -n "$namespace" get deployment,statefulset,cronjob,job,pvc -o name | wc -l | tr -d ' ')" = 0 \
+                || { echo '::error::Back up and decommission application workloads and PVCs first; see OPERATIONS.md'; exit 1; }
+            done
+          fi
+      - name: Validate and save the exact Terraform plan
+        env:
+          DIRECTORY: ${{ steps.stage.outputs.directory }}
+          STATE_KEY: ${{ steps.stage.outputs.key }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="$DIRECTORY" init -input=false -reconfigure -lockfile=readonly \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$AWS_REGION" \
+            -backend-config="key=$STATE_KEY" -backend-config=encrypt=true -backend-config=use_lockfile=true
+          terraform -chdir="$DIRECTORY" validate -no-color
+          args=()
+          if [ "$STAGE" = platform ]; then args+=(-var-file="$GITHUB_WORKSPACE/.runtime/automation/platform.tfvars.json"); fi
+          if [ "$ACTION" = destroy ]; then args+=(-destroy); fi
+          # Full plans may contain secret material. Store them privately rather than in Actions artifacts or logs.
+          terraform -chdir="$DIRECTORY" plan -input=false -lock-timeout=5m "${args[@]}" \
+            -out="$GITHUB_WORKSPACE/.runtime/automation/plan.tfplan" > .runtime/automation/plan.txt
+          terraform -chdir="$DIRECTORY" show -json "$GITHUB_WORKSPACE/.runtime/automation/plan.tfplan" > .runtime/automation/plan.json
+          python3 - <<'PY'
+          import collections, json, os
+          from pathlib import Path
+          plan = json.loads(Path('.runtime/automation/plan.json').read_text())
+          counts = collections.Counter('/'.join(c['change']['actions']) for c in plan.get('resource_changes', []))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('### Terraform plan\n\nStage: ' + os.environ['STAGE'] + '\n\n')
+              for action, count in sorted(counts.items()):
+                  out.write('- ' + action + ': ' + str(count) + '\n')
+          PY
+      - name: Store the plan privately for review and exact-plan application
+        id: bundle
+        run: |
+          set -euo pipefail
+          mkdir -p terraform/generated/kops
+          tar --exclude=kubeconfig --exclude='*-state.json' -czf .runtime/automation-plan.tgz \
+            .runtime/automation terraform/generated/kops
+          key="automation-plans/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/plan.tgz"
+          aws s3 cp .runtime/automation-plan.tgz "s3://$STATE_BUCKET/$key" --sse AES256 --only-show-errors
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "checksum=$(sha256sum .runtime/automation-plan.tgz | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "workspace=$GITHUB_WORKSPACE" >> "$GITHUB_OUTPUT"
+          printf '\nPrivate plan bundle: s3://%s/%s\nReview plan.txt before approving the infrastructure environment.\n' \
+            "$STATE_BUCKET" "$key" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove private runner files
+        if: always()
+        run: rm -rf .runtime/automation .runtime/automation-plan.tgz terraform/generated/kops terraform/bootstrap/backend_override.tf
+  apply:
+    if: inputs.action != 'plan'
+    needs: plan
+    runs-on: [self-hosted, linux, x64, agribridge]
+    environment: infrastructure
+    permissions:
+      contents: write
+      id-token: write
+    timeout-minutes: 60
+    env:
+      DIRECTORY: ${{ needs.plan.outputs.directory }}
+      STATE_KEY: ${{ needs.plan.outputs.key }}
+      PLAN_KEY: ${{ needs.plan.outputs.bundle }}
+      PLAN_CHECKSUM: ${{ needs.plan.outputs.checksum }}
+      PLAN_WORKSPACE: ${{ needs.plan.outputs.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cloud-tools
+        with:
+          role: ${{ vars.AWS_INFRA_APPLY_ROLE }}
+      - name: Restore and verify the reviewed plan
+        run: |
+          set -euo pipefail
+          test "$GITHUB_WORKSPACE" = "$PLAN_WORKSPACE" || { echo '::error::Plan and apply require the same runner workspace path'; exit 1; }
+          aws s3 cp "s3://$STATE_BUCKET/$PLAN_KEY" .runtime/automation-plan.tgz --only-show-errors
+          printf '%s  %s\n' "$PLAN_CHECKSUM" .runtime/automation-plan.tgz | sha256sum --check
+          tar -xzf .runtime/automation-plan.tgz
+          printf 'terraform { backend "s3" {} }\n' > terraform/bootstrap/backend_override.tf
+          if [ "$DIRECTORY" = terraform/platform ]; then
+            export KUBECONFIG="$GITHUB_WORKSPACE/.runtime/automation/kubeconfig"
+            kops export kubeconfig "$CLUSTER_NAME" --admin=1h --kubeconfig "$KUBECONFIG"
+          fi
+          terraform -chdir="$DIRECTORY" init -input=false -reconfigure -lockfile=readonly \
+            -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$AWS_REGION" \
+            -backend-config="key=$STATE_KEY" -backend-config=encrypt=true -backend-config=use_lockfile=true
+      - name: Apply the saved plan without replanning
+        run: terraform -chdir="$DIRECTORY" apply -input=false -lock-timeout=5m "$GITHUB_WORKSPACE/.runtime/automation/plan.tfplan"
+      - name: Verify new cluster controllers
+        if: inputs.stage == 'cluster' && inputs.action == 'apply'
+        run: |
+          export KUBECONFIG="$GITHUB_WORKSPACE/.runtime/automation/kubeconfig"
+          kops export kubeconfig "$CLUSTER_NAME" --admin=1h --kubeconfig "$KUBECONFIG"
+          kops validate cluster "$CLUSTER_NAME" --wait=15m
+          python3 scripts/prepare-cluster.py wait
+      - name: Publish non-secret service outputs to GitOps automatically
+        if: inputs.stage == 'services' && inputs.action == 'apply'
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B runtime-config origin/main
+          for environment in staging production; do
+            aws ssm get-parameter --region "$AWS_REGION" --name "/agribridge/$environment/deployment" \
+              --query Parameter.Value --output text > ".runtime/automation/$environment.json"
+            python3 scripts/release.py configure "$environment" ".runtime/automation/$environment.json"
+          done
+          if ! git diff --quiet -- argocd/staging-values.yaml argocd/production-values.yaml; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- argocd/staging-values.yaml argocd/production-values.yaml
+            git commit -m 'Refresh Terraform runtime references [skip ci]'
+            git push origin HEAD:main
+          fi
+      - name: Remove private runner files
+        if: always()
+        run: rm -rf .runtime/automation .runtime/automation-plan.tgz terraform/generated/kops terraform/bootstrap/backend_override.tf

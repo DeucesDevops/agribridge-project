@@ -1,7 +1,27 @@
 node_modules/
+.DS_Store
+.venv/
+internal-docs/
+__pycache__/
+*.py[cod]
 dist/
 coverage/
+.scannerwork/
+.sonar/
 .env
-.local/
-.DS_Store
 reports/
+.terraform/
+*.tfstate*
+*.tfplan
+*.auto.tfvars
+!*.auto.tfvars.example
+backend.hcl
+terraform/bootstrap/backend_override.tf
+.runtime/
+kubedefs/*-rendered.yaml
+
+# Regenerate cluster Terraform privately; bootstrap material may be sensitive.
+terraform/generated/
+
+# Temporary image-generation duplicates; keep the curated roadmap in docs/images/.
+generated_images/

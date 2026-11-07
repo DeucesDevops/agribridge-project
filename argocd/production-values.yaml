@@ -1,0 +1,20 @@
+releaseEnabled: true
+requireImageDigests: true
+hostname: production.agribridge.deuces.dev
+region: us-east-1
+secretArn: arn:aws:secretsmanager:us-east-1:237258628535:secret:agribridge-production/runtime-v2-BiYxcH
+api:
+  repository: docker.io/macroni607/agribridge-api
+  tag: 2a353541f5af0c5b2d44910056e861cb048b6adf-41481887330-1
+  digest: sha256:e9ec725ac0274cb0ef7b643f496405836fb78918ee27639e7dfdf86a520db970
+web:
+  repository: docker.io/macroni607/agribridge-web
+  tag: 2a353541f5af0c5b2d44910056e861cb048b6adf-41481887330-1
+  digest: sha256:bbadf2b7cc370ea59fcd011bae1146b6b43953e7988e92e9c4e5407b99cf2100
+backup:
+  enabled: true
+  bucket: agribridge-backups-237258628535
+  role: arn:aws:iam::237258628535:role/agribridge-production-backup
+  prefix: production
+release:
+  gitSha: 2a353541f5af0c5b2d44910056e861cb048b6adf
