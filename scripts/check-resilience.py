@@ -1,6 +1,6 @@
 """Controlled staging-only Redis/PostgreSQL pod restarts and recovery evidence.
 
-Run explicitly from the operator workstation. Production is not restarted.
+Run explicitly through operations.yaml. Production is not restarted.
 No application rows are written; credentials remain inside the API pod.
 """
 import json
@@ -11,9 +11,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
-OUT = ROOT / ".runtime/final-evidence"
+OUT = ROOT / ".runtime/automation/resilience"
 OUT.mkdir(parents=True, exist_ok=True)
-KUBE = ["kubectl", "--kubeconfig=" + str(ROOT / ".runtime/kubeconfig")]
+KUBE = ["kubectl", "--kubeconfig=" + os.environ["KUBECONFIG"]]
 STAGING = KUBE + ["-n", "agribridge-staging"]
 
 

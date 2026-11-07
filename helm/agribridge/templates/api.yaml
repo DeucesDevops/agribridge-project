@@ -1,0 +1,3 @@
+{{- if .Values.releaseEnabled }}
+{{ include "agribridge.workload" (dict "root" . "component" "api") }}
+{{- end }}

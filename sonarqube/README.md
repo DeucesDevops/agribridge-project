@@ -14,7 +14,6 @@ runtime, and this folder does not provision or contact AWS.
 | `sonar-project.properties` | One `agribridge` project, analysis scope, coverage import and quality-gate enforcement |
 | `prepare-coverage.py` | Validates and combines component LCOV reports using repository-relative source paths |
 | `test_coverage.py` | Checks path mapping, report combination and missing/invalid coverage failures |
-| `../.github/workflows/sonarqube.yaml` | Manually triggered analysis with no image publication or deployment |
 | `../.github/workflows/delivery.yaml` | Optional main-branch gate inside `checks`, before the dependent `publish` job |
 
 The analysis includes API JavaScript, frontend JavaScript/JSX/CSS, authored
@@ -101,12 +100,12 @@ first. Tokens belong to the server that issued them. For a custom certificate
 authority, configure `SONAR_ROOT_CERT` on the scan-action steps as described in
 the official action documentation; do not disable TLS verification.
 
-To verify CI scanning while AWS remains offline, run **Actions → SonarQube analysis
-only → Run workflow**, choosing `main`. This manual workflow requires the URL and
-token, but does not require `SONAR_ENABLED=true`. It only tests coverage and runs
-analysis; it never publishes images, changes GitOps values or deploys anything.
-Do not use the delivery workflow as an analysis-only test: its later jobs still
-publish and attempt the existing release process.
+To verify CI scanning while AWS remains offline, dispatch **Actions → Verify,
+publish and release through GitOps → Run workflow**, choosing `main` and enabling
+`analysis_only`. This requires the URL and token even if `SONAR_ENABLED` is unset.
+It runs the checks and SonarQube gate, then skips image publication and all
+release jobs. The previous separate analysis workflow has been consolidated into
+this mode of `delivery.yaml`.
 
 When enabled, the delivery sequence is:
 

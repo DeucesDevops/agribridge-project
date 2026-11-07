@@ -1,23 +1,25 @@
 # Argo CD GitOps
 
-Stage 6 is complete. Argo CD and its bootstrap release
-were installed on 2 November 2026. All reported Argo pods are ready and the
-refreshed platform plan reports no changes. Source is published and workflow
-41470632352 and 41473944213 passed all four jobs. Both environments respond over HTTPS with
-healthy readiness checks and the same build; their Git values pin identical
-published image digests. Detailed runtime acceptance passed in both environments;
-A Git-based rollback returned staging to the first verified images, then restored
-the second release. Both Applications are Synced/Healthy and both original database
-claims remain bound. See [the rollback evidence](ROLLBACK-REVIEW.md).
+Terraform installs the Argo CD controller and `helm/argocd-bootstrap`, which creates
+this folder's AppProject and both Application objects. Argo CD owns the application
+resources rendered from `helm/agribridge`; Actions never directly Helm-installs the
+application into these namespaces.
 
-Terraform installed the controller and the bootstrap Helm release containing
-project.yaml and both Application definitions. GitHub Actions will test, scan
-and publish images, then commit their immutable digests for Argo CD to deploy
-using helm/agribridge. Production receives staging's verified digests.
+| File | Responsibility |
+|---|---|
+| `argocd-values.yaml` | Controller settings, including private service exposure |
+| `project.yaml` | Allowed repository, namespaces and resource kinds |
+| `*-application.yaml` | Chart path and ordered values files for each environment |
+| `staging-values.yaml`, `production-values.yaml` | Terraform-derived runtime references and CI-selected release digests |
 
-The local workflow's direct Helm deployment path has been replaced. The version
-on GitHub remains unchanged until the reviewed source is published.
+The services infrastructure job refreshes runtime references from Parameter Store
+without changing image selections. Delivery records actual published digests,
+updates staging in Git, waits for public release verification, then promotes the
+same digests to production. Each environment retains its own runtime configuration.
 
-Follow [GITOPS-RUNBOOK.md](GITOPS-RUNBOOK.md) for checks, planning, publication
-effects, bootstrap and live acceptance. Runtime secret values stay in AWS Secrets
-Manager and are delivered by External Secrets; no credentials belong here.
+AWS application infrastructure is currently offline. Historical installation and
+rollback evidence is retained in [docs/evidence](../docs/evidence/). The refactored
+cloud workflows require their own live validation before claiming success.
+
+See the [GitOps runbook](GITOPS-RUNBOOK.md), [setup](../docs/CONFIGURATION.md) and
+[operations](../docs/OPERATIONS.md). No runtime secret values belong here.

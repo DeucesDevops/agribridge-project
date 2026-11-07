@@ -2,7 +2,8 @@
 
 Historical record: the cluster was shut down on 2 November 2026. The changes
 below are now retained in source; no additional live upgrade is claimed here.
-See [shutdown details](../docs/SHUTDOWN-2026-11-02.md).
+This review records the earlier deployment. The deployment is now offline;
+see the current [project status](../../README.md).
 
 Status at the review: live baseline and synthetic alert demonstration verified. Two source
 fixes are prepared locally and tested. No platform apply or source publication
