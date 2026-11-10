@@ -6,6 +6,11 @@ This guide records the checks for the cloud automation/GitOps refactor on `dev`.
 AWS application infrastructure remains offline. The implementation has not been
 verified by applying or destroying cloud resources during this review.
 
+The earlier AWS demonstration includes completed cache-resilience, database
+persistence and isolated staging/production restore receipts. Their sanitized
+[operational acceptance summary](evidence/ACCEPTANCE.md) records those results
+separately from validation of the refactored workflows.
+
 ## Local checks — 7 November 2026
 
 | Check | Result and scope |

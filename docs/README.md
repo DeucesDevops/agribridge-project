@@ -8,6 +8,7 @@
 | [REPRODUCTION.md](REPRODUCTION.md) | Ordered local and GitHub Actions setup |
 | [OPERATIONS.md](OPERATIONS.md) | Checks, backups, restore testing, rollback and teardown |
 | [VERIFICATION.md](VERIFICATION.md) | Validation performed and remaining live checks |
+| [Operational acceptance](evidence/ACCEPTANCE.md) | Recorded cache, persistence and backup-restore results |
 | [evidence/](evidence/) | Dated historical reviews; commands there may use retired paths |
 
 The root README and these guides describe the current workflow. Historical reviews
