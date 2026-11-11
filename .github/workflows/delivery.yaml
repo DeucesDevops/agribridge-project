@@ -91,7 +91,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          values = Path('kubedefs/nginx-ingress-values.yaml.tftpl').read_text()
+          values = Path('helm/platform/nginx-ingress-values.yaml.tftpl').read_text()
           values = values.replace('${certificate_arn}', 'arn:aws:acm:us-east-1:123456789012:certificate/validation')
           Path('/tmp/nginx-values.yaml').write_text(values)
           PY

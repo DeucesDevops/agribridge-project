@@ -29,8 +29,8 @@ class ClusterTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.previous = Path.cwd()
         os.chdir(self.directory.name)
-        Path("kubedefs").mkdir()
-        Path("kubedefs/cluster.yaml").write_text((ROOT / "kubedefs/cluster.yaml").read_text())
+        Path("terraform/cluster").mkdir(parents=True)
+        Path("terraform/cluster/cluster.yaml").write_text((ROOT / "terraform/cluster/cluster.yaml").read_text())
         Path(".runtime/automation").mkdir(parents=True)
         self.outputs = {"kops_state_store": {"value": "s3://kops-state-607"},
                         "discovery_store": {"value": "s3://agribridge-oidc-237258628535"},
@@ -41,7 +41,7 @@ class ClusterTests(unittest.TestCase):
         self.directory.cleanup()
 
     def test_runner_cidr_replaces_placeholder_without_changing_instance_groups(self):
-        before = list(yaml.safe_load_all(Path("kubedefs/cluster.yaml").read_text()))
+        before = list(yaml.safe_load_all(Path("terraform/cluster/cluster.yaml").read_text()))
         after = list(yaml.safe_load_all(cluster.render(self.outputs, "8.8.8.8/32", "k8s.agribridge.deuces.dev")))
         self.assertEqual(after[0]["spec"]["kubernetesApiAccess"], ["8.8.8.8/32"])
         self.assertEqual(after[1:], before[1:])
@@ -61,7 +61,7 @@ class ClusterTests(unittest.TestCase):
             self.assertEqual(run.call_count, 1)  # Only DNS was read; no kOps create/replace/update.
 
     def test_generated_provider_fix_preserves_resources_and_scopes_only_lb_webhook(self):
-        Path("terraform/cluster").mkdir(parents=True)
+        Path("terraform/cluster").mkdir(parents=True, exist_ok=True)
         Path("terraform/cluster/outputs.tf").write_text('output "cluster_name" {}\n')
         directory = Path("generated")
         (directory / "data").mkdir(parents=True)

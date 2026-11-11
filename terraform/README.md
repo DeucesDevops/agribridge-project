@@ -36,17 +36,25 @@ never apply an old workstation copy. See [reproduction](../docs/REPRODUCTION.md)
 - `variables.tf`, `outputs.tf`: inputs and handoffs.
 - `terraform.tfvars.example`: documented service inputs, without secret values.
 - `modules/`: reusable resource definitions.
-- `kubedefs/cluster.yaml`: authored kOps configuration.
+- `cluster/cluster.yaml`: authored kOps Cluster and InstanceGroup definitions.
 
 Keep provider lockfiles, resource addresses and `moved.tf` history intact.
 Directory organization is not a reason to create fresh state or import resources
 under different addresses.
+
+The cluster source contains a documentation-only API CIDR. The infrastructure
+workflow supplies trusted runner/VPN CIDRs and bootstrap discovery outputs; do
+not register the placeholder directly.
 
 `prepare-cluster.py generate` renders the runner's allowed CIDRs and bootstrap
 outputs, generates `generated/kops/`, keeps providers in the handwritten root and
 preserves the pinned webhook bootstrap fix. It verifies the generated output
 contract instead of silently rewriting the checked-in outputs. Generated cluster
 files stay ignored and travel privately with the exact plan for cluster apply.
+
+Shared NGINX/NLB Helm values live in
+`../helm/platform/nginx-ingress-values.yaml.tftpl`; `platform/main.tf` supplies
+the ACM certificate reference when installing the ingress controller.
 
 Platform inputs come directly from the services outputs. Services application
 refreshes `argocd/*-values.yaml` from non-secret SSM metadata automatically.

@@ -24,7 +24,7 @@ def render(outputs, cidrs, cluster_name):
     for network in networks:
         if not network.is_global or network.prefixlen < (24 if network.version == 4 else 64):
             raise ValueError("API access requires narrow public runner/VPN CIDRs")
-    documents = list(yaml.safe_load_all(Path("kubedefs/cluster.yaml").read_text()))
+    documents = list(yaml.safe_load_all(Path("terraform/cluster/cluster.yaml").read_text()))
     cluster = next(item for item in documents if item["kind"] == "Cluster")
     if cluster["metadata"]["name"] != cluster_name:
         raise ValueError("Unexpected cluster identity")
