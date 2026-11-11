@@ -31,7 +31,7 @@ module "platform" {
       yamldecode(file("${path.module}/../../argocd/production-application.yaml")),
     ]
   })
-  ingress_values = templatefile("${path.module}/../../kubedefs/nginx-ingress-values.yaml.tftpl", {
+  ingress_values = templatefile("${path.module}/../../helm/platform/nginx-ingress-values.yaml.tftpl", {
     certificate_arn = var.platform.certificate_arn
   })
   monitoring_values = file("${path.module}/../../monitoring/prometheus-values.yaml")
