@@ -18,7 +18,6 @@ reports/
 backend.hcl
 terraform/bootstrap/backend_override.tf
 .runtime/
-kubedefs/*-rendered.yaml
 
 # Regenerate cluster Terraform privately; bootstrap material may be sensitive.
 terraform/generated/
