@@ -126,9 +126,8 @@ centralized logs and database backup/restore jobs support application operations
 |---|---|
 | `frontend/`, `api/` | Application source and tests |
 | `.github/workflows/` | Delivery, infrastructure and operations workflows |
-| `terraform/` | Infrastructure configuration and reusable modules |
-| `kubedefs/` | kOps cluster and ingress definitions |
-| `helm/` | Application and Argo CD bootstrap charts |
+| `terraform/` | Infrastructure configuration, kOps cluster definition and reusable modules |
+| `helm/` | Application and Argo CD bootstrap charts; shared platform Helm values |
 | `argocd/` | GitOps applications and release values |
 | `monitoring/`, `sonarqube/` | Observability and code-quality configuration |
 | `scripts/` | Local verification and workflow helpers |
