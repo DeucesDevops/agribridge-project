@@ -7,10 +7,6 @@ terraform {
   }
 }
 
-provider "aws" {
-  region              = var.region
-  allowed_account_ids = [var.expected_account_id]
-}
 
 data "aws_caller_identity" "current" {}
 data "aws_route53_zone" "app" { name = var.zone_name }

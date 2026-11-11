@@ -32,6 +32,19 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
+# Plans can contain secret material. Expire only workflow plans, never state.
+resource "aws_s3_bucket_lifecycle_configuration" "plans" {
+  bucket = aws_s3_bucket.state.id
+  rule {
+    id     = "automation-plan-retention"
+    status = "Enabled"
+    filter { prefix = "automation-plans/" }
+    expiration { days = 7 }
+    noncurrent_version_expiration { noncurrent_days = 7 }
+    abort_incomplete_multipart_upload { days_after_initiation = 1 }
+  }
+}
+
 resource "aws_s3_bucket_policy" "state" {
   bucket = aws_s3_bucket.state.id
   policy = jsonencode({ Version = "2012-10-17", Statement = [{ Effect = "Deny", Principal = "*", Action = "s3:*", Resource = [aws_s3_bucket.state.arn, "${aws_s3_bucket.state.arn}/*"], Condition = { Bool = { "aws:SecureTransport" = "false" } } }] })

@@ -1,15 +1,15 @@
 # Project guides
 
-Start with the rebuild guide and configuration checklist. Use operations after
-an environment exists.
+| Guide | Purpose |
+|---|---|
+| [ASSESSMENT.md](ASSESSMENT.md) | Original course requirements |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Ownership, folders and interview explanation |
+| [CONFIGURATION.md](CONFIGURATION.md) | Runner, authentication, environments and configuration |
+| [REPRODUCTION.md](REPRODUCTION.md) | Ordered local and GitHub Actions setup |
+| [OPERATIONS.md](OPERATIONS.md) | Checks, backups, restore testing, rollback and teardown |
+| [VERIFICATION.md](VERIFICATION.md) | Validation performed and remaining live checks |
+| [Operational acceptance](evidence/ACCEPTANCE.md) | Recorded cache, persistence and backup-restore results |
+| [evidence/](evidence/) | Dated historical reviews; commands there may use retired paths |
 
-| Guide | Question it answers |
-|-------|---------------------|
-| [REBUILD-GUIDE.md](REBUILD-GUIDE.md) | What order do I follow, and what do I ask in each future chat? |
-| [CONFIGURATION.md](CONFIGURATION.md) | What values must I provide, in which files, and when? |
-| [OPERATIONS.md](OPERATIONS.md) | How do I provision, deploy, monitor, roll back and restore? |
-| [TEARDOWN.md](TEARDOWN.md) | What was removed and what remains outside this project? |
-| [VERIFICATION.md](VERIFICATION.md) | What worked, and what remains untested? |
-| [PROJECT-PLAN.md](PROJECT-PLAN.md) | What are the deliverable milestones? |
-| [ASSESSMENT.md](ASSESSMENT.md) | What did the assignment require? |
-| [Terraform guide](../terraform/README.md) | Which folders do I run, edit or regenerate? |
+The root README and these guides describe the current workflow. Historical reviews
+are retained as evidence rather than as instructions for the next deployment.
