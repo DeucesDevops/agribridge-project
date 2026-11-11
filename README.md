@@ -1,95 +1,135 @@
 # AgriBridge
 
-## Deployment status — 2 November 2026
+AgriBridge is a grain marketplace connecting farmers with institutional buyers.
+Farmers publish available produce, buyers place orders, and both can track orders
+through fulfilment. A mobile-first React interface is backed by an Express API,
+PostgreSQL and Redis.
 
-The rebuilt AWS services and three-node kOps cluster are running. External Secrets,
-NGINX ingress, monitoring and logging passed their platform checks; Terraform's
-cluster, services and platform consistency checks reported no changes.
-Argo CD and its bootstrap release are installed; all five reported Argo pods
-are ready, and the refreshed platform plan reports no changes. Reviewed source
-publication and the first application CI/CD run remain pending. Stage 6 source
-passed local acceptance. See the
-[session record](docs/REBUILD-SESSION.md) and [GitOps runbook](argocd/README.md).
-The URLs below have DNS/TLS infrastructure but await the first application release.
+The repository includes a complete local environment and an automated AWS
+Kubernetes deployment with separate staging and production environments.
 
-A grain marketplace connecting smallholder farmers and institutional buyers.
-React/Vite frontend, Express API, PostgreSQL and Redis; deployed to a kOps cluster
-on AWS with Terraform, Helm and GitHub Actions.
+## Features
 
-- [Staging application](https://staging.agribridge.deuces.dev)
-- [Production application](https://production.agribridge.deuces.dev)
-- [Rebuild this project, one step/chat at a time](docs/REBUILD-GUIDE.md)
-- [All inputs and configuration to supply](docs/CONFIGURATION.md)
-- [Current staged rebuild and approval checklist](docs/REBUILD-SESSION.md)
+- **Farmer workspace:** publish crop lots with quantity, price and location.
+- **Buyer workspace:** browse available produce and place orders.
+- **Order management:** track status changes and order history.
+- **Dashboard:** view marketplace activity and credit eligibility.
+- **Role-based access:** separate farmer and buyer experiences with cookie-based authentication.
 
-## Where things belong
+## Architecture
 
-| Folder/file | Purpose |
-|-------------|---------|
-| `frontend/` | Browser application, tests, Dockerfile and Nginx routing |
-| `api/` | API application, migrations, tests and Dockerfile |
-| `terraform/` | AWS application services; `bootstrap/`, `cluster/` and `platform/` run the dependent setup steps |
-| `terraform/modules/` | Reusable Terraform service definitions |
-| `terraform/generated/kops/` | Generated cluster code; regenerate rather than hand-edit |
-| `kubedefs/` | Flat cluster YAML, ingress values and optional rendered manifests |
-| `argocd/` | Argo CD project, applications, controller values and CI-managed environment image selections |
-| `helm/agribridge/` | One application chart, with staging and production values |
-| `monitoring/` | Prometheus/Grafana and Fluent Bit configuration |
-| `.github/workflows/` | Checks, Docker Hub publication and deployment |
-| `scripts/` | Infrastructure, deployment and operations automation |
-| `docs/` | Configuration, rebuild sequence, operations and evidence |
-| `docker-compose.yml` | Complete local application stack |
-| `Makefile` | Short commands for common tasks |
+![AgriBridge system architecture](docs/images/agribridge-architecture.svg)
 
-Infrastructure runs in this order: **bootstrap → cluster → AWS services →
-Kubernetes platform**. Each step keeps its existing state; generated cluster files stay
-separate. [Terraform's starting guide](terraform/README.md) explains each part.
+The frontend serves the web application and proxies `/api` requests to Express
+through the same origin. PostgreSQL stores application data; Redis caches
+responses. The API exposes health, readiness, metrics and build-version endpoints.
 
-## Common commands
+| Layer | Technology |
+|---|---|
+| Frontend | React, Vite, NGINX |
+| API | Node.js, Express |
+| Data | PostgreSQL with persistent storage; Redis |
+| Local environment | Docker Compose |
+| Infrastructure | Terraform; kOps Kubernetes on AWS EC2 |
+| Delivery | GitHub Actions, Docker Hub, Helm, Argo CD |
+| Traffic and secrets | Route 53, ACM, Network Load Balancer, NGINX ingress, AWS Secrets Manager, External Secrets Operator |
+| Observability and recovery | Prometheus, Grafana, Fluent Bit, CloudWatch Logs, S3 database backups |
+
+Staging and production share a cluster, with separate namespaces, secrets and
+database volumes. Both run the same application image digests. See the
+[architecture reference](docs/ARCHITECTURE.md) for deployment details.
+
+## Quick start
+
+Install Docker with **Docker Compose v2**, then run:
 
 ```sh
-make help
-cp .env.example .env   # Local-only throwaway values; see configuration guide
-make local
+git clone https://github.com/DeucesDevops/agribridge-project.git
+cd agribridge-project
+cp .env.example .env
+docker compose up --build -d --wait
 ```
 
-For an isolated verification run, use `make local-verify`. It builds throwaway
-images, exercises login and PostgreSQL integration tests, checks cache failure
-and database-volume persistence, then removes only its own test containers and
-volumes. It uses local ports 18080 and 15433 by default; override them with
-`VERIFY_WEB_PORT` and `VERIFY_PG_PORT` if needed. Docker engine access is required.
+Open **[http://localhost:8080](http://localhost:8080)**.
 
-Local application: http://localhost:8080. Stop it with `make stop`; local database
-data is retained. For AWS, authenticate AWS and GitHub, complete the configuration
-checklist, then follow the reviewed planning/apply sequence in the session record.
-During this staged rebuild, use the separate planning commands and GitOps runbook.
+Compose builds the frontend and API, starts PostgreSQL and Redis, and initializes
+the database with demonstration data. The example environment contains local
+values; choose your own throwaway values in `.env` before starting.
 
-## Release path
+### Demo accounts
 
-The prepared workflow checks the code, builds and exercises the images, scans
-them and publishes to Docker Hub. It records published digests in Git for Argo CD
-to deploy with the application chart. After staging passes public HTTPS,
-readiness and build-identity checks, production receives the same digests without
-rebuilding. A configured GitHub production-environment reviewer gate pauses that
-promotion; otherwise it follows staging automatically. This path still requires
-its first successful live run. Runtime secrets come from AWS Secrets Manager
-through External Secrets.
+| Role | Email |
+|---|---|
+| Farmer | `amina.yusuf@example.ng` |
+| Buyer | `procurement@sahelmills.example` |
 
-Route 53 points to one AWS Network Load Balancer. ACM terminates HTTPS, and
-maintained F5 NGINX OSS routes requests into the application. Prometheus/Grafana
-collect metrics; Fluent Bit sends application logs to CloudWatch.
+Use the value of **`SEED_PASSWORD` in your local `.env`** as the password for both
+accounts. Demo data is enabled locally; production is not seeded.
 
-## Guides
+### Useful commands
 
-| You want to… | Read |
-|--------------|------|
-| Rebuild or follow this in future chats | [Rebuild guide](docs/REBUILD-GUIDE.md) |
-| Know what values to enter and where | [Configuration checklist](docs/CONFIGURATION.md) |
-| Understand or change Terraform | [Terraform guide](terraform/README.md) |
-| Deploy, inspect dashboards, roll back or restore | [Operations](docs/OPERATIONS.md) |
-| See what has actually been verified | [Verification](docs/VERIFICATION.md) |
-| Read the original project requirements | [Assessment](docs/ASSESSMENT.md) |
+```sh
+# Check the containers
+docker compose ps
 
-Staging includes demo accounts; production is deliberately unseeded. Retrieve the
-staging demo password from Secrets Manager as described in the operations guide.
-No passwords, access tokens, state files or kubeconfigs belong in Git.
+# Follow API logs
+docker compose logs -f api
+
+# Stop the application; retain database data
+docker compose down
+```
+
+The web port defaults to `8080`. To use another port, add `WEB_LOCAL_PORT=8081`
+to `.env` and restart Compose. Local PostgreSQL is available on port `5433`;
+`PG_LOCAL_PORT` overrides it.
+
+## Development and testing
+
+Use **Node.js 22** for application development. Install dependencies and run the
+application tests and frontend build:
+
+```sh
+npm ci --prefix api
+npm ci --prefix frontend
+npm run test:coverage --prefix api
+npm run test:coverage --prefix frontend
+npm run build --prefix frontend
+```
+
+With Docker and Make installed, `make local-verify` exercises a disposable
+container stack, including PostgreSQL integration tests, Redis degradation and
+database persistence. `make check` validates helper code, Helm and Terraform
+formatting; it also requires Python dependencies from `scripts/requirements.txt`,
+Helm and Terraform.
+
+## Deployment
+
+GitHub Actions validates changes, builds and scans container images, and publishes
+them to Docker Hub. Release image digests are recorded in GitOps configuration;
+Argo CD reconciles the application Helm chart. Production promotion reuses the
+images verified in staging.
+
+Terraform provisions AWS infrastructure and platform services. Runtime credentials
+come from AWS Secrets Manager through External Secrets Operator. Monitoring,
+centralized logs and database backup/restore jobs support application operations.
+
+| Guide | Contents |
+|---|---|
+| [Configuration](docs/CONFIGURATION.md) | Environment settings, repository variables and secrets |
+| [Deployment guide](docs/REPRODUCTION.md) | Infrastructure setup and deployment prerequisites |
+| [Operations runbook](docs/OPERATIONS.md) | Monitoring, rollback, backup, restore and teardown |
+| [SonarQube](sonarqube/README.md) | Optional local code-quality analysis |
+
+## Repository layout
+
+| Directory | Purpose |
+|---|---|
+| `frontend/`, `api/` | Application source and tests |
+| `.github/workflows/` | Delivery, infrastructure and operations workflows |
+| `terraform/` | Infrastructure configuration and reusable modules |
+| `kubedefs/` | kOps cluster and ingress definitions |
+| `helm/` | Application and Argo CD bootstrap charts |
+| `argocd/` | GitOps applications and release values |
+| `monitoring/`, `sonarqube/` | Observability and code-quality configuration |
+| `scripts/` | Local verification and workflow helpers |
+| `docs/` | Architecture, configuration and operations documentation |

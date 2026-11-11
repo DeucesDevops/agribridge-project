@@ -3,11 +3,16 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'argocd/**'
+      - 'argocd/*-values.yaml'
       - 'docs/**'
       - '**/*.md'
   pull_request:
   workflow_dispatch:
+    inputs:
+      analysis_only:
+        description: Run checks and SonarQube without publishing or deploying
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -35,6 +40,7 @@ jobs:
       PGDATABASE: agribridge_test
     steps:
       - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.4'
@@ -52,12 +58,35 @@ jobs:
       - run: npm run build --prefix frontend
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - run: python -m pip install PyYAML==6.0.3
+      - name: Validate coverage-path preparation
+        run: python3 -m unittest discover -s sonarqube -p 'test_*.py'
+      - name: Prepare SonarQube configuration and coverage
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (vars.SONAR_ENABLED == 'true' || inputs.analysis_only)
+        env:
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          test -n "$SONAR_HOST_URL" || { echo '::error::Set the SONAR_HOST_URL repository variable before enabling SonarQube'; exit 1; }
+          test -n "$SONAR_TOKEN" || { echo '::error::Set the SONAR_TOKEN repository secret before enabling SonarQube'; exit 1; }
+          python3 sonarqube/prepare-coverage.py
+      - name: SonarQube analysis and quality gate
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (vars.SONAR_ENABLED == 'true' || inputs.analysis_only)
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          scannerVersion: 8.1.0.6389
+          args: -Dproject.settings=sonarqube/sonar-project.properties
+      - name: Report disabled SonarQube integration
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.SONAR_ENABLED != 'true' && !inputs.analysis_only
+        run: echo 'SonarQube is disabled. Configure a reachable server, SONAR_HOST_URL, SONAR_TOKEN and SONAR_ENABLED=true to enforce its quality gate.' >> "$GITHUB_STEP_SUMMARY"
+      - run: python -m pip install -r scripts/requirements.txt
       - uses: azure/setup-helm@v4.3.1
         with: {version: v3.19.0}
       - run: helm lint helm/agribridge --set secretArn=validation
       - name: Validate release promotion, Argo CD and application renders
-        run: python scripts/test-gitops.py
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py' -v
       - name: Validate NGINX controller and NLB service rendering
         run: |
           python3 - <<'PY'
@@ -75,6 +104,8 @@ jobs:
             abort "Expected only TLS 443 to backend HTTP 80" unless ports.length == 1 && ports[0]["port"] == 443 && ports[0]["targetPort"] == 80
             abort "Wrong controller class" unless service.dig("spec", "loadBalancerClass") == "service.k8s.aws/nlb"
           '
+      - name: Lint GitHub Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -color
       - name: Validate deployment scripts
         run: for script in scripts/*.sh; do bash -n "$script" || exit; done
       - uses: hashicorp/setup-terraform@v3
@@ -100,9 +131,23 @@ jobs:
             frontend/coverage/
       - name: Summarize JUnit results
         if: always()
-        run: if [ -f scripts/test-summary.py ]; then python3 scripts/test-summary.py >> "$GITHUB_STEP_SUMMARY"; fi
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('### API test reports\n\n')
+              for path in (Path('api/reports/unit.xml'), Path('api/reports/junit.xml')):
+                  if path.exists():
+                      root = ET.parse(path).getroot()
+                      suites = [root] if root.tag == 'testsuite' else list(root.iter('testsuite'))
+                      tests = sum(int(s.get('tests', 0)) for s in suites)
+                      failures = sum(int(s.get('failures', 0)) + int(s.get('errors', 0)) for s in suites)
+                      output.write(f'- {path.name}: {tests} tests, {failures} failures/errors\n')
+          PY
   publish:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && !inputs.analysis_only
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -112,7 +157,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - run: python -m pip install PyYAML==6.0.3
+      - run: python -m pip install -r scripts/requirements.txt
       - name: Log in to your Docker Hub account
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
@@ -134,11 +179,13 @@ jobs:
               output.write('WEB_IMAGE=' + values['web']['repository'] + '\n')
           PY
           tag="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          echo "IMAGE_TAG=$tag" >> "$GITHUB_ENV"
+          {
+            echo "IMAGE_TAG=$tag"
+            echo "GIT_SHA=$GITHUB_SHA"
+            echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "APP_VERSION=$(node -p 'require("./api/package.json").version')"
+          } >> "$GITHUB_ENV"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
-          echo "APP_VERSION=$(node -p 'require("./api/package.json").version')" >> "$GITHUB_ENV"
       - name: Build and exercise the exact images to publish
         run: |
           cp .env.example .env
@@ -176,7 +223,7 @@ jobs:
         run: |
           docker push "$API_IMAGE:$IMAGE_TAG"
           docker push "$WEB_IMAGE:$IMAGE_TAG"
-          python scripts/gitops-release.py record .runtime/release.json
+          python scripts/release.py record .runtime/release.json
       - uses: actions/upload-artifact@v4
         with:
           name: published-release
@@ -202,19 +249,19 @@ jobs:
         with: {ref: main, fetch-depth: 0}
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - run: python -m pip install PyYAML==6.0.3
+      - run: python -m pip install -r scripts/requirements.txt
       - uses: actions/download-artifact@v4
         with: {name: published-release, path: .runtime}
       - name: Record the verified staging release in Git
         env:
           RELEASE_TAG: ${{ needs.publish.outputs.image_tag }}
         run: |
-          python scripts/gitops-release.py stage .runtime/release.json
-          python scripts/gitops-release.py commit staging --expected-tag "$RELEASE_TAG"
+          python scripts/release.py stage .runtime/release.json
+          python scripts/release.py commit staging --expected-tag "$RELEASE_TAG"
       - name: Wait for Argo CD and verify staging over HTTPS
         env:
           RELEASE_TAG: ${{ needs.publish.outputs.image_tag }}
-        run: python scripts/wait-release.py staging "$RELEASE_TAG"
+        run: python scripts/smoke-test.py staging "$RELEASE_TAG"
   production:
     needs: [publish, staging]
     runs-on: ubuntu-latest
@@ -229,15 +276,15 @@ jobs:
         with: {ref: main, fetch-depth: 0}
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
-      - run: python -m pip install PyYAML==6.0.3
+      - run: python -m pip install -r scripts/requirements.txt
       - name: Promote the exact staging image digests in Git
         env:
           RELEASE_TAG: ${{ needs.publish.outputs.image_tag }}
         run: |
-          python scripts/wait-release.py staging "$RELEASE_TAG"
-          python scripts/gitops-release.py promote --expected-tag "$RELEASE_TAG"
-          python scripts/gitops-release.py commit production --expected-tag "$RELEASE_TAG"
+          python scripts/smoke-test.py staging "$RELEASE_TAG"
+          python scripts/release.py promote --expected-tag "$RELEASE_TAG"
+          python scripts/release.py commit production --expected-tag "$RELEASE_TAG"
       - name: Wait for Argo CD and verify production over HTTPS
         env:
           RELEASE_TAG: ${{ needs.publish.outputs.image_tag }}
-        run: python scripts/wait-release.py production "$RELEASE_TAG"
+        run: python scripts/smoke-test.py production "$RELEASE_TAG"

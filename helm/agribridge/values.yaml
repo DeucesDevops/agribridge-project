@@ -54,3 +54,7 @@ backup:
   prefix: staging
   schedule: '0 2 * * *'
 seedDemoData: false
+restoreTest:
+  enabled: false
+  jobName: ''
+  key: ''
