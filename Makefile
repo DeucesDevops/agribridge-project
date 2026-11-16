@@ -4,7 +4,7 @@ ENV ?= staging
 .PHONY: help local stop local-verify check render sonar-up sonar-scan sonar-down
 
 help:
-	@printf '%s\n' 'AgriBridge local commands:' '  make local          Build and start Compose' '  make stop           Stop Compose; retain database data' '  make local-verify   Exercise disposable containers and database persistence' '  make check          Check helpers, Helm and Terraform formatting' '  make render ENV=staging  Inspect the GitOps Helm manifests' '  make sonar-up       Start local SonarQube' '  make sonar-scan     Run coverage and SonarQube analysis' '  make sonar-down     Stop SonarQube; retain its data' '' 'Cloud tasks run in GitHub Actions: delivery.yaml, infrastructure.yaml, operations.yaml.' 'Setup and rebuild sequence: docs/REPRODUCTION.md'
+	@printf '%s\n' 'AgriBridge local commands:' '  make local          Build and start Compose' '  make stop           Stop Compose; retain database data' '  make local-verify   Exercise disposable containers and database persistence' '  make check          Check helpers, Helm and Terraform formatting' '  make render ENV=staging  Inspect the GitOps Helm manifests' '  make sonar-up       Start local SonarQube' '  make sonar-scan     Run coverage and SonarQube analysis' '  make sonar-down     Stop SonarQube; retain its data' '' 'CI/CD: GitHub Actions delivery.yaml. Infrastructure: Terraform CLI. Operations: kubectl/Helm.' 'Setup and rebuild sequence: docs/REPRODUCTION.md'
 
 local:
 	docker compose up --build -d --wait
