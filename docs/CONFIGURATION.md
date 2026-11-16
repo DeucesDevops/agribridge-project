@@ -9,8 +9,10 @@ register it for untrusted pull-request jobs. Both plan and apply must use the sa
 absolute checkout path; the workflow verifies that path before applying a plan.
 
 Install AWS CLI v2, kOps **1.36.2**, kubectl compatible with Kubernetes **1.36.6**,
-`dig`, `jq`, GNU `tar` and `sha256sum`. The composite action installs Python 3.13,
-Terraform 1.14.6, Helm 3.19.0 and the pinned Python dependency. It requires outbound
+`dig` for cluster generation. The composite action installs Python 3.13,
+Helm 3.19.0 and the pinned Python dependency. Infrastructure jobs additionally
+install Terraform 1.14.6; planning also installs Checkov 3.4.5. Operations do not
+install or require Terraform. It requires outbound
 HTTPS for GitHub, AWS, package downloads and Helm registries.
 
 `KUBERNETES_API_CIDRS` must include that runner's stable public egress IP/VPN CIDR.
@@ -91,3 +93,18 @@ plan, readable plan, JSON plan and generated cluster configuration where needed.
 They exclude runner kubeconfigs. Reviewers need authorized S3 access; GitHub's
 summary contains resource-action counts and the bundle location, not secret values.
 The lifecycle rule takes effect after the next approved bootstrap apply.
+
+
+## Infrastructure workflow layout
+
+`infrastructure.yaml` contains named actions only: select state, generate cluster
+input, verify the cluster session, save and scan the plan, store private evidence,
+then apply after environment approval and verify the result. Shared actions call
+`.github/ci/infrastructure.py`, which holds the tested state, plan and bundle logic.
+The apply job verifies the bundle hash and workspace, then applies the original
+binary plan without replanning. Plan/report contents stay out of public logs.
+
+Main delivery, infrastructure and operations share `agribridge-cloud-maintenance`.
+Do not dispatch multiple maintenance requests while another is pending: GitHub's
+concurrency model retains only one pending run in a group. Separate dev/PR groups
+let read-only checks proceed independently of cloud maintenance.

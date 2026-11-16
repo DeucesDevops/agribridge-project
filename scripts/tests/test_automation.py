@@ -88,30 +88,15 @@ class WorkflowTests(unittest.TestCase):
         return subprocess.run(["bash", "-euo", "pipefail", "-c", source],
                               env=dict(os.environ, **variables), capture_output=True, text=True)
 
-    def test_bootstrap_destroy_is_rejected_before_cloud_commands(self):
-        result = self.run_guard("infrastructure.yaml", "plan",
-                                "Validate request and select the existing state boundary",
-                                {"ACTION": "destroy", "STAGE": "bootstrap", "CONFIRMATION": "cluster",
-                                 "CLUSTER_NAME": "cluster"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Bootstrap state and DNS are retained", result.stdout)
-
-    def test_destroy_requires_exact_confirmation_before_cloud_commands(self):
-        result = self.run_guard("infrastructure.yaml", "plan",
-                                "Validate request and select the existing state boundary",
-                                {"ACTION": "destroy", "STAGE": "cluster", "CONFIRMATION": "wrong",
-                                 "CLUSTER_NAME": "cluster"})
-        self.assertNotEqual(result.returncode, 0)
-
     def test_production_resilience_is_rejected_before_cluster_commands(self):
         result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate task and establish a short-lived cluster session",
+                                "Validate maintenance request",
                                 {"TASK": "staging-resilience", "ENVIRONMENT": "production"})
         self.assertNotEqual(result.returncode, 0)
 
     def test_restore_key_cannot_select_another_environments_backup(self):
         result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate task and establish a short-lived cluster session",
+                                "Validate maintenance request",
                                 {"TASK": "restore-test", "ENVIRONMENT": "staging",
                                  "BACKUP_KEY": "production/example.dump"})
         self.assertNotEqual(result.returncode, 0)

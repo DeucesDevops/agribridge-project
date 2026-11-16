@@ -84,7 +84,8 @@ is refused. Platform destruction is refused while application workloads or PVCs
 remain; cluster/services destruction is refused while platform state still owns
 managed resources.
 
-1. Stop application releases. Back up each environment and verify its restore.
+1. Set `DEPLOY_ENABLED=false` to stop new application releases. Main delivery and
+   maintenance runs share a lock, so an in-progress release finishes first. Back up each environment and verify its restore.
 2. With an authorized cluster session, delete the two Argo CD Applications while
    Argo CD is still running. Their existing resource finalizers remove tracked
    application resources. Confirm deletion completes before removing controllers:

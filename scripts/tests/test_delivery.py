@@ -37,30 +37,35 @@ class DeliveryGateTests(unittest.TestCase):
         return subprocess.run(["bash", "-euo", "pipefail", "-c", source],
                               env=dict(os.environ, **environment), capture_output=True, text=True)
 
-    def test_source_gate_rejects_failed_cancelled_and_skipped_prerequisites(self):
-        passing = {"FAILED": "false", "CANCELLED": "false", "SKIPPED": "false"}
-        self.assertEqual(self.run_gate("validation", passing).returncode, 0)
-        for key in passing:
-            with self.subTest(key=key):
-                self.assertNotEqual(self.run_gate("validation", dict(passing, **{key: "true"})).returncode, 0)
+    def test_fast_and_full_source_gates_require_the_expected_evidence(self):
+        for full in ("true", "false"):
+            expected = "success" if full == "true" else "skipped"
+            passing = {"FULL_VALIDATION": full, "BASE_RESULTS": "success " * 5,
+                       "FULL_RESULTS": (expected + " ") * 5}
+            self.assertEqual(self.run_gate("validation", passing).returncode, 0)
+            for status in ("failure", "cancelled", "skipped"):
+                self.assertNotEqual(self.run_gate("validation", dict(passing, BASE_RESULTS=status)).returncode, 0)
+            for status in ("failure", "cancelled", "success", "skipped"):
+                self.assertEqual(self.run_gate("validation", dict(passing, FULL_RESULTS=status)).returncode == 0,
+                                 status == expected)
 
     def test_required_gate_never_accepts_missing_container_evidence(self):
         for validation in ("success", "failure", "skipped", "cancelled"):
             for containers in ("success", "failure", "skipped", "cancelled"):
                 with self.subTest(validation=validation, containers=containers):
                     result = self.run_gate("checks", {"VALIDATION": validation,
-                                                     "CONTAINERS": containers, "ANALYSIS_ONLY": "false"})
+                                                     "CONTAINERS": containers, "ANALYSIS_ONLY": "false", "FULL_VALIDATION": "true"})
                     self.assertEqual(result.returncode == 0, validation == containers == "success")
 
     def test_analysis_only_allows_only_an_intentionally_skipped_container_job(self):
         for containers in ("success", "failure", "skipped", "cancelled"):
             result = self.run_gate("checks", {"VALIDATION": "success", "CONTAINERS": containers,
-                                              "ANALYSIS_ONLY": "true"})
+                                              "ANALYSIS_ONLY": "true", "FULL_VALIDATION": "true"})
             self.assertEqual(result.returncode == 0, containers == "skipped")
 
     def test_every_validation_job_is_required_and_no_fail_open_overrides_exist(self):
-        validators = {"gitleaks-scan", "checkov", "trivy-fs", "lint", "test", "integration-test",
-                      "sonarqube", "client-build", "platform", "terraform"}
+        validators = {"scope", "gitleaks-scan", "checkov", "trivy-fs", "lint", "test", "integration-test",
+                      "sonarqube", "platform", "terraform"}
         self.assertEqual(set(self.jobs["validation"]["needs"]), validators)
         self.assertEqual(self.jobs["validation"]["if"], "always()")
         for job in self.jobs.values():

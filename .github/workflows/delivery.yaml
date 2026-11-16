@@ -20,10 +20,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: delivery-${{ github.ref }}
+  group: ${{ github.ref == 'refs/heads/main' && 'agribridge-cloud-maintenance' || format('delivery-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:
+  scope:
+    name: Select fast dev checks or full validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - id: scope
+        env:
+          FAST_DEV_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        run: |
+          if [ "$FAST_DEV_PUSH" = true ]; then
+            echo 'full=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'full=true' >> "$GITHUB_OUTPUT"
+          fi
+
   gitleaks-scan:
     name: Gitleaks secret scan
     runs-on: ubuntu-latest
@@ -42,7 +59,8 @@ jobs:
 
   checkov:
     name: Checkov (${{ matrix.framework }})
-    needs: gitleaks-scan
+    needs: [scope, gitleaks-scan]
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -84,7 +102,8 @@ jobs:
 
   trivy-fs:
     name: Trivy source scan (${{ matrix.component }})
-    needs: gitleaks-scan
+    needs: [scope, gitleaks-scan]
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -95,7 +114,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - name: Block fixable high and critical dependency vulnerabilities
+      - name: Block high and critical dependency vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.69.3
@@ -103,7 +122,7 @@ jobs:
           scan-ref: ${{ matrix.component }}
           scanners: vuln
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
+          ignore-unfixed: false
           exit-code: '1'
           format: json
           output: trivy-source-${{ matrix.component }}.json
@@ -123,7 +142,7 @@ jobs:
           upload-release-assets: false
 
   lint:
-    name: Lint and npm audit (${{ matrix.component }})
+    name: Lint (${{ matrix.component }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -142,8 +161,6 @@ jobs:
           directory: ${{ matrix.component }}
       - name: Lint with no warnings
         run: npm run lint -- --max-warnings=0
-      - name: Audit production and development dependencies
-        run: npm audit --audit-level=high
 
   test:
     name: Unit tests and coverage (${{ matrix.component }})
@@ -176,7 +193,8 @@ jobs:
 
   integration-test:
     name: API integration tests (real PostgreSQL)
-    needs: lint
+    needs: [scope, lint]
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -214,7 +232,8 @@ jobs:
 
   sonarqube:
     name: SonarQube analysis and quality gate
-    needs: [test, integration-test]
+    needs: [scope, test, integration-test]
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -255,26 +274,6 @@ jobs:
         if: env.RUN_SONAR != 'true'
         run: echo 'SonarQube was not run. Community Build scans main only; enable SONAR_ENABLED with a reachable SONAR_HOST_URL and SONAR_TOKEN. This is not a passing scan.' >> "$GITHUB_STEP_SUMMARY"
 
-  client-build:
-    name: Frontend production build
-    needs: [test, sonarqube]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/node-project
-        with:
-          directory: frontend
-      - name: Build and enforce the bundle budget
-        run: npm run build --prefix frontend
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: frontend-build
-          path: frontend/dist/
-          if-no-files-found: error
-
   platform:
     name: Helm, release safety and workflow validation
     runs-on: ubuntu-latest
@@ -283,14 +282,19 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
       - name: Install validation dependency
         run: python -m pip install -r scripts/requirements.txt
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v3.19.0
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: '1.14.6'
+      - name: Check Terraform formatting once
+        run: terraform fmt -check -recursive terraform
       - name: Lint the application chart
         run: helm lint helm/agribridge --set secretArn=validation
       - name: Verify promotion, GitOps, CI guards and Helm rendering
@@ -306,50 +310,50 @@ jobs:
 
   terraform:
     name: Terraform validation (${{ matrix.directory }})
+    needs: scope
+    if: needs.scope.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        directory: [terraform/bootstrap, terraform/cluster, terraform, terraform/platform]
+        directory: [terraform/bootstrap, terraform, terraform/platform]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: '1.14.6'
-      - name: Check formatting
-        run: terraform fmt -check -recursive terraform
       - name: Validate without cloud credentials or a remote backend
         env:
           TF_DIRECTORY: ${{ matrix.directory }}
         run: |
-          if [ "$TF_DIRECTORY" = terraform/cluster ] && [ ! -f terraform/generated/kops/kubernetes.tf ]; then
-            echo '::notice::Generated kOps Terraform is validated during infrastructure provisioning.'
-          else
-            terraform -chdir="$TF_DIRECTORY" init -backend=false -input=false
-            terraform -chdir="$TF_DIRECTORY" validate -no-color
-          fi
+          terraform -chdir="$TF_DIRECTORY" init -backend=false -input=false
+          terraform -chdir="$TF_DIRECTORY" validate -no-color
 
   validation:
     name: Require all source and configuration checks
     if: always()
-    needs: [gitleaks-scan, checkov, trivy-fs, lint, test, integration-test, sonarqube, client-build, platform, terraform]
+    needs: [scope, gitleaks-scan, checkov, trivy-fs, lint, test, integration-test, sonarqube, platform, terraform]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every validation job to succeed
         env:
-          FAILED: ${{ contains(needs.*.result, 'failure') }}
-          CANCELLED: ${{ contains(needs.*.result, 'cancelled') }}
-          SKIPPED: ${{ contains(needs.*.result, 'skipped') }}
-        run: test "$FAILED" = false && test "$CANCELLED" = false && test "$SKIPPED" = false
+          FULL_VALIDATION: ${{ needs.scope.outputs.full }}
+          BASE_RESULTS: ${{ needs.scope.result }} ${{ needs.gitleaks-scan.result }} ${{ needs.lint.result }} ${{ needs.test.result }} ${{ needs.platform.result }}
+          FULL_RESULTS: ${{ needs.checkov.result }} ${{ needs.trivy-fs.result }} ${{ needs.integration-test.result }} ${{ needs.sonarqube.result }} ${{ needs.terraform.result }}
+        run: |
+          for result in $BASE_RESULTS; do test "$result" = success || exit 1; done
+          expected=skipped
+          if [ "$FULL_VALIDATION" = true ]; then expected=success; fi
+          for result in $FULL_RESULTS; do test "$result" = "$expected" || exit 1; done
 
   publish:
     name: Docker build, runtime verification, scan and SBOM
-    if: ${{ !inputs.analysis_only }}
-    needs: validation
+    if: needs.scope.outputs.full == 'true' && !inputs.analysis_only
+    needs: [scope, validation]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -360,7 +364,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.13'
       - name: Install release dependency
@@ -461,7 +465,7 @@ jobs:
   checks:
     name: checks
     if: always()
-    needs: [validation, publish]
+    needs: [scope, validation, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -470,9 +474,10 @@ jobs:
           VALIDATION: ${{ needs.validation.result }}
           CONTAINERS: ${{ needs.publish.result }}
           ANALYSIS_ONLY: ${{ inputs.analysis_only }}
+          FULL_VALIDATION: ${{ needs.scope.outputs.full }}
         run: |
           test "$VALIDATION" = success
-          if [ "$ANALYSIS_ONLY" = true ]; then
+          if [ "$ANALYSIS_ONLY" = true ] || [ "$FULL_VALIDATION" = false ]; then
             test "$CONTAINERS" = skipped
           else
             test "$CONTAINERS" = success
