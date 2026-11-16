@@ -34,6 +34,7 @@ class InfrastructureTests(unittest.TestCase):
             'PLAN_KEY': 'automation-plans/123/1/plan.tgz', 'PLAN_CHECKSUM': 'not-the-checksum',
         })
         self.variables.start()
+        Path(os.environ["GITHUB_OUTPUT"]).touch()
 
     def tearDown(self):
         self.variables.stop()

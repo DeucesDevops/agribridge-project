@@ -293,6 +293,7 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: '1.14.6'
+          terraform_wrapper: false
       - name: Check Terraform formatting once
         run: terraform fmt -check -recursive terraform
       - name: Lint the application chart
@@ -325,6 +326,7 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: '1.14.6'
+          terraform_wrapper: false
       - name: Validate without cloud credentials or a remote backend
         env:
           TF_DIRECTORY: ${{ matrix.directory }}
