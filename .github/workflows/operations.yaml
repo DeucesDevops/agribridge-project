@@ -41,83 +41,55 @@ jobs:
       BACKUP_KEY: ${{ inputs.backup_key }}
       NAMESPACE: agribridge-${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: ./.github/actions/cloud-tools
+      - name: Check out the reviewed source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Prepare tools and the operations identity
+        uses: ./.github/actions/cloud-tools
         with:
           role: ${{ vars.AWS_OPERATIONS_ROLE }}
-      - name: Validate maintenance request
-        run: |
-          set -euo pipefail
-          test "$TASK" != staging-resilience || test "$ENVIRONMENT" = staging
-          if [ "$TASK" = restore-test ]; then
-            case "$BACKUP_KEY" in "$ENVIRONMENT/"*.dump) ;; *) echo '::error::Backup key must belong to the selected environment'; exit 2 ;; esac
-          fi
+      - name: Validate the selected task and environment
+        uses: ./.github/actions/operations-task
+        with:
+          task: validate
       - name: Open a verified cluster session
         uses: ./.github/actions/cluster-session
-      - name: Verify secrets delivery, workloads, storage and public release identity
+      - name: Check workloads, storage and the running release
         if: inputs.task == 'check'
-        run: |
-          set -euo pipefail
-          kubectl -n "$NAMESPACE" wait --for=condition=Ready externalsecret/agribridge --timeout=300s
-          kubectl -n "$NAMESPACE" rollout status statefulset/agribridge-postgres --timeout=300s
-          kubectl -n "$NAMESPACE" rollout status deployment/agribridge-api --timeout=300s
-          kubectl -n "$NAMESPACE" rollout status deployment/agribridge-web --timeout=300s
-          kubectl -n "$NAMESPACE" rollout status deployment/agribridge-redis --timeout=300s
-          kubectl -n "$NAMESPACE" get pvc
-          tag=$(python3 -c 'import os,yaml; print(yaml.safe_load(open("argocd/"+os.environ["ENVIRONMENT"]+"-values.yaml"))["api"]["tag"])')
-          python3 scripts/smoke-test.py "$ENVIRONMENT" "$tag" --runtime
-      - name: Start a backup using the Helm-managed CronJob definition
+        uses: ./.github/actions/operations-task
+        with:
+          task: health
+      - name: Run an on-demand database backup
         if: inputs.task == 'backup'
-        run: |
-          set -euo pipefail
-          job="agribridge-backup-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          echo "OPERATION_JOB=$job" >> "$GITHUB_ENV"
-          kubectl -n "$NAMESPACE" create job "$job" --from=cronjob/agribridge-backup
-          kubectl -n "$NAMESPACE" wait --for=condition=complete "job/$job" --timeout=1800s
-          kubectl -n "$NAMESPACE" logs "job/$job" -c upload
-      - name: Create an isolated restore-verification Job from Helm
+        uses: ./.github/actions/operations-task
+        with:
+          task: backup
+      - name: Verify a backup in an isolated temporary database
         if: inputs.task == 'restore-test'
-        run: |
-          set -euo pipefail
-          job="agribridge-restore-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          echo "OPERATION_JOB=$job" >> "$GITHUB_ENV"
-          export RESTORE_JOB_NAME="$job"
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          Path('.runtime/automation/restore-values.json').write_text(json.dumps({
-              'restoreTest': {'enabled': True, 'jobName': os.environ['RESTORE_JOB_NAME'],
-                              'key': os.environ['BACKUP_KEY']}
-          }))
-          PY
-          helm template agribridge helm/agribridge -n "$NAMESPACE" \
-            -f "helm/agribridge/values-$ENVIRONMENT.yaml" -f "argocd/$ENVIRONMENT-values.yaml" \
-            -f .runtime/automation/restore-values.json --show-only templates/restore-test.yaml \
-            > .runtime/automation/restore-job.yaml
-          kubectl -n "$NAMESPACE" create -f .runtime/automation/restore-job.yaml
-          kubectl -n "$NAMESPACE" wait --for=condition=complete "job/$job" --timeout=1800s
-          kubectl -n "$NAMESPACE" logs "job/$job" -c verify
-      - name: Prove staging cache recovery and database persistence
+        uses: ./.github/actions/operations-task
+        with:
+          task: restore
+      - name: Verify staging cache recovery and database persistence
         if: inputs.task == 'staging-resilience'
-        run: python3 scripts/check-resilience.py
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: ./.github/actions/operations-task
+        with:
+          task: resilience
+      - name: Save resilience evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always() && inputs.task == 'staging-resilience'
         with:
           name: staging-resilience
           path: .runtime/automation/resilience/*.json
           if-no-files-found: ignore
           retention-days: 14
-      - name: Show failed Job diagnostics
+      - name: Show diagnostics for a failed operation
         if: failure() && env.OPERATION_JOB != ''
-        run: |
-          kubectl -n "$NAMESPACE" describe "job/$OPERATION_JOB"
-          kubectl -n "$NAMESPACE" logs "job/$OPERATION_JOB" --all-containers=true --tail=100
-      - name: Remove the temporary Job and private runner files
+        uses: ./.github/actions/operations-task
+        with:
+          task: diagnostics
+      - name: Remove the temporary Job and private session files
         if: always()
-        run: |
-          status=0
-          if [ -n "${OPERATION_JOB:-}" ]; then
-            kubectl -n "$NAMESPACE" delete job "$OPERATION_JOB" --ignore-not-found --wait=false || status=$?
-          fi
-          rm -rf .runtime/automation
-          exit "$status"
+        uses: ./.github/actions/operations-task
+        with:
+          task: cleanup
