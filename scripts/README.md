@@ -16,7 +16,9 @@ or reusing, rather than separate entry points for every stage.
 safety without AWS. `requirements.txt` pins the helpers' Python dependency.
 
 The delivery workflow uses reusable actions under `.github/actions/` for Node
-setup, Helm rendering and GitOps release steps. Focused CI assertions are under
+setup, Helm rendering, GitOps release steps, verified cluster sessions and
+infrastructure tasks. `.github/ci/infrastructure.py` implements the private saved-plan
+lifecycle, security scan and safe teardown guards; the workflow contains only named actions. Focused CI assertions are under
 `.github/ci/`. See the [pipeline guide](../docs/PIPELINE.md).
 
 The former stage-specific plan/provision/resume scripts and direct Helm deploy

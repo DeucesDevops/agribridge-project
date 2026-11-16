@@ -11,7 +11,7 @@ workflow from GitHub Actions; the remaining commands inside steps run automatica
 | Readability | One large checks job with embedded Python, JavaScript and Ruby | Visible scan, lint, test and build jobs | Named jobs, shared setup actions and short commands |
 | Secrets | No dedicated Gitleaks job | Gitleaks reports findings but forces exit code zero | Blocking Gitleaks scan; PR comments disabled |
 | Infrastructure scans | Terraform validation and Helm checks | Checkov scans, with failures ignored | Checkov for authored Terraform, rendered Kubernetes and Dockerfiles; explicit blocking starter policy |
-| Dependencies | npm audit | Trivy filesystem scans that cannot block | npm audit plus blocking Trivy filesystem scans |
+| Dependencies | npm audit | Trivy filesystem scans that cannot block | One primary Trivy dependency gate, plus separate runtime image scans |
 | Application tests | Unit coverage and real PostgreSQL integration tests | Client/server commands without dependency installation steps | Locked installs, both coverage suites, real PostgreSQL integration, JUnit and coverage artifacts |
 | SonarQube | Optional main-branch analysis with a blocking gate when enabled | Optional analysis; a failed quality gate is tolerated | Separate job, combined coverage artifacts, blocking gate when enabled |
 | Containers | Build once, exercise with Compose, scan, then push | Build and scan, then build again to push | Docker Bake action builds from Compose; run, scan, generate SBOMs and push those exact local images |
@@ -27,7 +27,7 @@ second image build and project-specific EKS commands are not carried over.
 ```mermaid
 flowchart TD
   S["Gitleaks → Checkov and Trivy source scans"] --> V["Source and configuration gate"]
-  T["Lint and audit → tests → SonarQube → frontend build"] --> V
+  T["Lint → tests → SonarQube"] --> V
   C["Helm, workflow and Terraform validation"] --> V
   V --> D["Build once → Compose acceptance → image scans and SBOMs"]
   D --> G["Required checks result"]
@@ -42,8 +42,8 @@ Configure branch protection to require **checks**.
 
 | Event or setting | Behaviour |
 |---|---|
-| Push to `dev` | Source/configuration checks, container build, Compose acceptance, image scans and SBOMs; no publishing or deployment |
-| Pull request to `main` | The same validation gates; no publishing or deployment |
+| Push to `dev` | Fast secret, lint, unit/coverage and platform checks; expensive scans and containers run on the PR |
+| Pull request to `main` | Full source/configuration and container gates; no publishing or deployment |
 | Push to `main` | Validation and container gates, then publish verified images to Docker Hub |
 | `DEPLOY_ENABLED=true` | Successful main releases also update staging, verify it over HTTPS, then promote and verify production |
 | `DEPLOY_ENABLED` unset or false | Publish on main, but skip both deployment jobs; useful while AWS is shut down |
@@ -70,21 +70,26 @@ Other controls such as KMS customer-managed keys, S3 logging, all Job resource
 limits and universal image-digest pinning are outside this starter Checkov gate.
 Review and extend the policy deliberately. Public OIDC discovery remains part of
 the existing architecture. Generated kOps output, Terraform caches and dependency
-folders are excluded; generated infrastructure is not a source-scan result.
+folders are excluded from delivery source scanning. The infrastructure workflow
+scans resolved AWS Terraform plans, including generated kOps resources, before apply.
+Platform-only and destroy plans are explicitly outside the selected AWS plan policy;
+rendered workload policies remain enforced in delivery.
 
 Kubernetes scans render both real Helm environments, including backup, seed and
 restore jobs. Validation-only API/web digests make those renders independent of a
 published release; nothing is applied to a cluster. Checkov JSON is checked again
 so an empty scan or parser errors cannot count as success.
 
-Trivy blocks **fixable HIGH/CRITICAL** findings, for both source dependencies and
-runtime images. Unfixed findings and lower severities are outside this Trivy gate;
-`npm audit --audit-level=high` remains an additional dependency check. There is no
+Trivy is the primary dependency scanner: **all HIGH/CRITICAL** source dependency
+findings block, including those without fixes. Runtime image scans block fixable
+HIGH/CRITICAL findings. Lower severities are outside these gates. The overlapping
+npm audit step has been removed; Trivy uses its own advisory data, so its results
+are not claimed to be identical to npm audit. There is no
 `continue-on-error`, `|| true` or forced zero scan exit code. Security/build actions
 are pinned to reviewed commit references rather than `master` or `latest`.
 
 Workflow artifacts contain Checkov/Trivy JSON, source and image SPDX JSON SBOMs,
-unit/integration JUnit reports, coverage, the frontend build and (on publication)
+unit/integration JUnit reports, coverage and (on publication)
 the release's registry digests. Evidence uploads run after scan/test failures where
 possible. SBOMs describe components; they do not themselves assert vulnerability
 freedom or provide image signatures.
@@ -101,16 +106,25 @@ main-only for Community Build. Missing settings fail when analysis is requested;
 disabled analysis is explicitly reported and is not represented as a passed scan.
 See [SonarQube setup](../sonarqube/README.md).
 
-The three reusable local actions handle Node setup, Helm manifest rendering and
-GitOps release selection. `.github/ci/` contains the extracted image-acceptance,
+Reusable local actions handle Node setup, Helm rendering, GitOps release
+selection, trusted cloud setup, verified cluster sessions and guarded infrastructure tasks. `.github/ci/` contains the extracted image-acceptance,
 ingress-contract and scan-evidence checks. These are focused validation logic,
 not another command sequence you must run manually. The tested `release.py` and
 `smoke-test.py` helpers retain digest validation, stale-release rejection and
 public acceptance checks that a broad sed replacement would lose.
 
+The standalone frontend build and unused build artifact have been removed. The
+frontend is built once inside its Docker image, where the bundle budget still
+fails the build if exceeded. Terraform formatting runs once in the platform job;
+root-specific initialization and validation remain separate. Routine dev pushes
+skip expensive scans/container checks deliberately, while PRs and main run them.
+The stable `checks` result validates each mode's expected successes and skips.
+
 Infrastructure and maintenance remain separate manual workflows. Delivery does
 not provision AWS, obtain cluster credentials or run kubectl. Enable deployment
-only after the existing platform and both HTTPS endpoints are available. Every
+only after the existing platform and both HTTPS endpoints are available. Main delivery runs share the infrastructure/operations maintenance lock for their
+entire lifetime, including staging and production, preventing a teardown between
+promotions. Development and PR checks have separate concurrency groups. Every
 release still uses `dev` → pull request → `main`; automated GitOps commits retain
 their bot attribution.
 

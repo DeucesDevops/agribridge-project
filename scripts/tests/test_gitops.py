@@ -214,7 +214,7 @@ class RenderTests(unittest.TestCase):
     def test_workflow_deployment_uses_git_and_has_no_cluster_credentials(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/delivery.yaml").read_text())
         jobs = workflow["jobs"]
-        self.assertEqual(jobs["publish"]["needs"], "validation")
+        self.assertIn("validation", jobs["publish"]["needs"])
         self.assertIn("publish", jobs["checks"]["needs"])
         self.assertIn("checks", jobs["staging"]["needs"])
         self.assertIn("staging", jobs["production"]["needs"])

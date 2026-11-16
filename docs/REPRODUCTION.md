@@ -66,11 +66,15 @@ from `main`. Select one stage at a time:
 | `platform` | Namespaces, storage, ingress, monitoring, logging, Argo CD and Applications |
 
 Choose `action=plan` for a preview. Choose `action=apply` for a run that generates
-its own saved plan, stores its bundle privately, and waits at the protected
+its own saved plan, enforces the selected AWS plan policies, stores its bundle privately, and waits at the protected
 `infrastructure` environment. Download the indicated bundle through authorized
 AWS access, inspect `plan.txt`, then approve that run. The apply job verifies the
 bundle checksum and uses that exact binary plan. It does not regenerate the plan.
 Terraform rejects a stale plan if state changed while approval was pending.
+The workflow uses named reusable actions; no manual shell sequence is required.
+AWS plan policy applies to bootstrap, cluster and services provisioning; platform
+workloads are scanned from rendered Helm, and destruction is not blocked by
+policies on resources being removed.
 
 Cluster planning updates the kOps metadata in S3 and generates Terraform input;
 it does not apply cluster infrastructure. The kOps compatibility fix remains in

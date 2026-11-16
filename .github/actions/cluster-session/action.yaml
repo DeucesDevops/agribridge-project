@@ -1,0 +1,8 @@
+name: Open a verified cluster session
+description: Export one-hour kOps credentials and verify the cluster name and API endpoint
+runs:
+  using: composite
+  steps:
+    - name: Open and verify the cluster session
+      shell: bash
+      run: python3 .github/ci/cluster-session.py
