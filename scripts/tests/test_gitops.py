@@ -32,6 +32,8 @@ class ReleaseTests(unittest.TestCase):
         for environment in ("staging", "production"):
             source = yaml.safe_load((ROOT / "argocd" / (environment + "-values.yaml")).read_text())
             Path("argocd/" + environment + "-values.yaml").write_text(yaml.safe_dump(source))
+        Path("api").mkdir()
+        Path("api/package.json").write_text(json.dumps({"version": "1.0.0"}))
         Path("release.json").write_text(json.dumps({"gitSha": "a" * 40, "images": IMAGES}))
 
     def tearDown(self):
@@ -46,6 +48,26 @@ class ReleaseTests(unittest.TestCase):
         self.assertTrue(after["releaseEnabled"])
         for key in ("hostname", "secretArn", "region", "backup"):
             self.assertEqual(after[key], before[key])
+
+    def test_identity_matches_gitops_repositories_and_exports_one_tag(self):
+        variables = {"GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1",
+                     "GITHUB_ENV": "build.env", "GITHUB_OUTPUT": "build.outputs",
+                     "DOCKERHUB_USERNAME": "macroni607"}
+        with patch.dict(os.environ, variables):
+            release.identity()
+        environment = dict(line.split("=", 1) for line in Path("build.env").read_text().splitlines())
+        self.assertEqual(environment["IMAGE_TAG"], TAG)
+        self.assertEqual(environment["GIT_SHA"], "a" * 40)
+        self.assertEqual(environment["API_IMAGE"], IMAGES["api"]["repository"])
+        self.assertEqual(Path("build.outputs").read_text(), f"tag={TAG}\n")
+
+    def test_identity_rejects_wrong_login_namespace_before_exporting(self):
+        with patch.dict(os.environ, {"GITHUB_SHA": "a" * 40, "GITHUB_RUN_ID": "123",
+                                     "GITHUB_RUN_ATTEMPT": "1", "DOCKERHUB_USERNAME": "someone-else",
+                                     "GITHUB_ENV": "build.env", "GITHUB_OUTPUT": "build.outputs"}):
+            with self.assertRaisesRegex(ValueError, "namespace.*disagree"):
+                release.identity()
+        self.assertFalse(Path("build.env").exists())
 
     def test_production_gets_identical_digests_and_keeps_its_own_runtime(self):
         production = yaml.safe_load(release.values_path("production").read_text())
@@ -192,11 +214,13 @@ class RenderTests(unittest.TestCase):
     def test_workflow_deployment_uses_git_and_has_no_cluster_credentials(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/delivery.yaml").read_text())
         jobs = workflow["jobs"]
-        self.assertEqual(jobs["publish"]["needs"], "checks")
+        self.assertEqual(jobs["publish"]["needs"], "validation")
+        self.assertIn("publish", jobs["checks"]["needs"])
+        self.assertIn("checks", jobs["staging"]["needs"])
         self.assertIn("staging", jobs["production"]["needs"])
         for environment in ("staging", "production"):
             rendered = yaml.safe_dump(jobs[environment])
-            self.assertIn("release.py", rendered)
+            self.assertIn("./.github/actions/gitops-release", rendered)
             self.assertNotIn("scripts/deploy.sh", rendered)
             self.assertNotIn("configure-aws-credentials", rendered)
             self.assertNotIn("id-token", rendered)

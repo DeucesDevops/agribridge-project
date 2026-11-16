@@ -88,16 +88,18 @@ gh workflow run infrastructure.yaml --ref main -f stage=cluster -f action=apply
 
 ## 4. Release the application
 
-Merge application changes into `main` or dispatch `delivery.yaml`. The jobs are
-`checks → publish → staging → production`; a failed prerequisite blocks later jobs.
-Checks include real PostgreSQL integration tests, API and frontend coverage,
-lockfile integrity, linting, build checks and report publication. SonarQube adds
-its configured quality gate before publication.
+Push changes to `dev`, open a pull request to `main`, and require `checks` before
+merging. `delivery.yaml` runs named security, lint, test, build and configuration
+jobs, followed by container acceptance, image scans and SBOM generation. A failed
+prerequisite blocks publication and deployment. See the
+[pipeline guide](PIPELINE.md) for the full sequence and scan policy.
 
 The published images are the images exercised by Compose in CI. Actions commits
 their immutable digests to staging. Argo CD reconciles the application chart;
 HTTPS/readiness/build-identity checks must pass before those same digests are
-promoted to production.
+promoted to production. Set repository variable `DEPLOY_ENABLED=true` only after
+the existing platform is running. Leave it unset while AWS is shut down: main
+still validates and publishes images, but skips staging and production.
 
 For a SonarQube-only validation run:
 
