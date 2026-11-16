@@ -70,10 +70,9 @@ Other controls such as KMS customer-managed keys, S3 logging, all Job resource
 limits and universal image-digest pinning are outside this starter Checkov gate.
 Review and extend the policy deliberately. Public OIDC discovery remains part of
 the existing architecture. Generated kOps output, Terraform caches and dependency
-folders are excluded from delivery source scanning. The infrastructure workflow
-scans resolved AWS Terraform plans, including generated kOps resources, before apply.
-Platform-only and destroy plans are explicitly outside the selected AWS plan policy;
-rendered workload policies remain enforced in delivery.
+folders are excluded from delivery source scanning. Infrastructure is planned and applied directly from the administrator terminal.
+Review saved Terraform plans before applying; CI source scans do not validate a
+resolved live AWS plan. Rendered workload policies remain enforced in delivery.
 
 Kubernetes scans render both real Helm environments, including backup, seed and
 restore jobs. Validation-only API/web digests make those renders independent of a
@@ -106,8 +105,8 @@ main-only for Community Build. Missing settings fail when analysis is requested;
 disabled analysis is explicitly reported and is not represented as a passed scan.
 See [SonarQube setup](../sonarqube/README.md).
 
-Reusable local actions handle Node setup, Helm rendering, GitOps release
-selection, trusted cloud setup, verified cluster sessions and guarded infrastructure tasks. `.github/ci/` contains the extracted image-acceptance,
+Reusable local actions handle Node setup, Helm rendering and GitOps release
+selection. `.github/ci/` contains the extracted image-acceptance,
 ingress-contract and scan-evidence checks. These are focused validation logic,
 not another command sequence you must run manually. The tested `release.py` and
 `smoke-test.py` helpers retain digest validation, stale-release rejection and
@@ -120,13 +119,37 @@ root-specific initialization and validation remain separate. Routine dev pushes
 skip expensive scans/container checks deliberately, while PRs and main run them.
 The stable `checks` result validates each mode's expected successes and skips.
 
-Infrastructure and maintenance remain separate manual workflows. Delivery does
-not provision AWS, obtain cluster credentials or run kubectl. Enable deployment
-only after the existing platform and both HTTPS endpoints are available. Main delivery runs share the infrastructure/operations maintenance lock for their
-entire lifetime, including staging and production, preventing a teardown between
-promotions. Development and PR checks have separate concurrency groups. Every
-release still uses `dev` → pull request → `main`; automated GitOps commits retain
-their bot attribution.
+Infrastructure and maintenance use direct terminal commands, as in the course's
+separate infrastructure setup stage. There is one application delivery workflow;
+no self-hosted runner, infrastructure workflow or operations workflow is required.
+Delivery does not provision AWS or obtain cluster credentials. Enable deployment
+only after the platform and GitOps configuration are ready. Disable it and wait
+for active delivery to finish before terminal maintenance; terminal commands do
+not participate in GitHub's workflow concurrency lock. Source changes use
+`dev` → checked pull request → `main`, followed by a fast-forward of `dev`.
+
+## Course mapping
+
+Reference: [DevOps Shack course](https://www.udemy.com/course/devopsshack-the-production-grade-end-to-end-devsecops-project/).
+The curriculum and QA workflow were reviewed on 16 November 2026.
+
+| Course stage | AgriBridge implementation |
+|---|---|
+| Local run | Docker Compose: web, API, PostgreSQL and Redis |
+| Gitleaks, Checkov, Trivy | Named blocking security jobs |
+| Lint, tests, SonarQube | Coverage and real PostgreSQL tests; SonarQube gate when enabled |
+| Docker build, scan and SBOM | Build once; test, scan and publish the same images |
+| Infrastructure setup | Direct Terraform commands on the existing kOps host |
+| QA deployment | Staging namespace, Helm and Argo CD |
+| Production promotion | Same verified image digests, separate namespace/secrets/storage |
+| Domain and HTTPS | Namecheap child-zone delegation, Route 53, ACM and NGINX/NLB |
+| Monitoring | Prometheus/Grafana; Fluent Bit and CloudWatch for logs |
+
+This adapts the sequence to the existing project. The course uses EKS, ALB,
+MySQL and direct kubectl delivery; AgriBridge keeps kOps, NGINX/NLB, PostgreSQL
+and Argo CD. Loki/Alloy/Tempo are not installed by this implementation. The
+course's report-only security settings are kept blocking here. See
+[REPRODUCTION.md](REPRODUCTION.md) for the runnable setup.
 
 References: [Trivy action](https://github.com/aquasecurity/trivy-action),
 [Checkov action](https://github.com/bridgecrewio/checkov-action),

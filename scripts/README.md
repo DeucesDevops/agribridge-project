@@ -1,26 +1,21 @@
 # Focused helpers
 
-GitHub Actions owns infrastructure sequencing, approvals, cloud authentication,
-maintenance task selection and logs. These helpers contain logic worth testing
-or reusing, rather than separate entry points for every stage.
+Run Terraform and kubectl directly using the reproduction and operations guides.
+GitHub Actions runs application CI/CD. There are no stage-specific provision,
+plan-bundle, cluster-session or operations wrappers.
 
 | Helper | Responsibility | Caller |
 |---|---|---|
-| `prepare-cluster.py` | Render runner/VPN access CIDRs, generate kOps Terraform, preserve the provider/output contract and bootstrap webhook fix; wait for controllers | Infrastructure workflow |
-| `release.py` | Resolve build identity, refresh non-secret runtime references, record published digests, stage/promote releases and commit validated image selections | Infrastructure and delivery workflows |
-| `smoke-test.py` | Verify public HTTPS and exact build identity; optional runtime secret/migration/login checks | Delivery and operations workflows |
-| `check-resilience.py` | Restart staging cache/database pods and verify recovery and persistent data | Explicit staging-only operations task |
+| `prepare-cluster.py` | Render narrow API CIDRs, verify delegation, generate kOps Terraform and preserve its bootstrap compatibility fix; wait for controllers | Administrator terminal |
+| `release.py` | Validate build identity, refresh non-secret runtime references and select/promote immutable digests | Terminal configuration and delivery CI |
+| `smoke-test.py` | Verify HTTPS, build identity and optional runtime secret/migration/login checks | Delivery CI and administrator terminal |
+| `check-resilience.py` | Deliberately restart staging cache/database pods and verify recovery and persistent data | Administrator terminal, staging only |
 | `verify-local.sh` | Disposable Compose stack, integration tests, cache degradation and persistence | `make local-verify` |
 
-`tests/` verifies release contracts, Helm rendering, cluster preparation and workflow
-safety without AWS. `requirements.txt` pins the helpers' Python dependency.
+`tests/` checks release contracts, Helm rendering, cluster preparation and blocking
+CI gates offline. `requirements.txt` pins the Python dependency. Reusable delivery
+actions cover Node setup, Helm rendering and GitOps promotion. `.github/ci/`
+contains focused image, ingress and scan-result assertions only.
 
-The delivery workflow uses reusable actions under `.github/actions/` for Node
-setup, Helm rendering, GitOps release steps, verified cluster sessions and
-infrastructure tasks. `.github/ci/infrastructure.py` implements the private saved-plan
-lifecycle, security scan and safe teardown guards; the workflow contains only named actions. Focused CI assertions are under
-`.github/ci/`. See the [pipeline guide](../docs/PIPELINE.md).
-
-The former stage-specific plan/provision/resume scripts and direct Helm deploy
-wrapper have been retired. Restore verification is a Helm-defined Kubernetes Job;
-backup scheduling is a Helm-defined CronJob. See [operations](../docs/OPERATIONS.md).
+Backups are a Helm-defined CronJob; isolated restore verification is a Helm-defined
+Job. Use the direct commands in [OPERATIONS.md](../docs/OPERATIONS.md).

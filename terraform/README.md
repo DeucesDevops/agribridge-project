@@ -1,65 +1,50 @@
 # Terraform
 
-GitHub Actions runs the four infrastructure boundaries in dependency order. The
-root remains the entry point for AWS application services; there is no stacks layer.
+Run Terraform from an authorized terminal on your existing kOps management
+instance. GitHub Actions handles application delivery; infrastructure has no
+workflow, self-hosted runner, plan bundle or extra GitHub OIDC roles to configure.
 
-| Order | Directory | Responsibility | Existing S3 state key |
+| Order | Directory | Responsibility | S3 state key |
 |---|---|---|---|
-| 1 | `bootstrap/` | Persistent state/discovery storage and project DNS | `bootstrap/terraform.tfstate` |
+| 1 | `bootstrap/` | Retained state/discovery storage and project DNS | `bootstrap/terraform.tfstate` |
 | 2 | `cluster/` | VPC, EC2 nodes, IAM and kOps add-ons | `kops/terraform.tfstate` |
-| 3 | This directory | Secrets, TLS, registry references, backups, logs and workload IAM | `services/terraform.tfstate` |
+| 3 | This directory | Secrets, TLS, backup storage, logs and workload IAM | `services/terraform.tfstate` |
 | 4 | `platform/` | Namespaces, storage, ingress, monitoring, logging and Argo CD | `platform/terraform.tfstate` |
 
-The cluster must exist before Terraform connects to its Kubernetes API. Remove
-platform resources while controllers still run, then remove cluster infrastructure.
-Staging/production share one cluster but have separate namespaces, secrets and
-PostgreSQL storage. One control-plane node is a capstone cost tradeoff.
+These boundaries preserve existing resource addresses and state. The cluster
+must exist before the platform can connect to Kubernetes. During teardown,
+remove the platform while Kubernetes and its controllers are still available.
 
-## Workflow
+## Standard commands
 
-Dispatch `.github/workflows/infrastructure.yaml` from `main`, selecting a stage
-and `plan`, `apply` or `destroy`. An apply/destroy run first creates its saved plan,
-then waits for the configured `infrastructure` environment approval. Full plans
-are encrypted in the private state bucket, not uploaded as Actions artifacts.
-The apply job checks the bundle checksum and applies that exact plan.
+From the repository root, initialize a boundary with its **existing** state key:
 
-The initial local bootstrap creates the state bucket once. For this existing
-project, recover its existing authoritative state instead of recreating retained
-resources. Actions generates an ignored `bootstrap/backend_override.tf` to use
-the original S3 recovery key with locking. Once that key is workflow-managed,
-never apply an old workstation copy. See [reproduction](../docs/REPRODUCTION.md).
+```sh
+terraform -chdir=terraform init -reconfigure -lockfile=readonly \
+  -backend-config=backend.hcl.example \
+  -backend-config=key=services/terraform.tfstate
+terraform -chdir=terraform plan -var-file=../.runtime/services.tfvars \
+  -out=../.runtime/services.tfplan
+terraform -chdir=terraform apply ../.runtime/services.tfplan
+```
+
+Review each plan before applying it. Plans and state can contain credentials;
+keep `.runtime/` private and out of Git. Never switch keys or apply an old
+workstation state to resolve drift. Retain provider lockfiles and `moved.tf`.
+
+For the complete bootstrap → cluster → services → platform sequence, including
+state recovery, administrator CIDRs and GitOps references, follow
+[REPRODUCTION.md](../docs/REPRODUCTION.md).
 
 ## Files to edit
 
-- `main.tf`: AWS service/module composition.
-- `providers.tf`: service provider account/region configuration.
-- `variables.tf`, `outputs.tf`: inputs and handoffs.
-- `terraform.tfvars.example`: documented service inputs, without secret values.
+- `backend.hcl.example`: non-secret shared S3 backend settings.
+- `main.tf`, `variables.tf`, `outputs.tf`: AWS services and handoffs.
+- `terraform.tfvars.example`: non-secret service inputs.
 - `modules/`: reusable resource definitions.
-- `cluster/cluster.yaml`: authored kOps Cluster and InstanceGroup definitions.
+- `cluster/cluster.yaml`: authored kOps Cluster and InstanceGroups.
 
-Keep provider lockfiles, resource addresses and `moved.tf` history intact.
-Directory organization is not a reason to create fresh state or import resources
-under different addresses.
-
-The cluster source contains a documentation-only API CIDR. The infrastructure
-workflow supplies trusted runner/VPN CIDRs and bootstrap discovery outputs; do
-not register the placeholder directly.
-
-`prepare-cluster.py generate` renders the runner's allowed CIDRs and bootstrap
-outputs, generates `generated/kops/`, keeps providers in the handwritten root and
-preserves the pinned webhook bootstrap fix. It verifies the generated output
-contract instead of silently rewriting the checked-in outputs. Generated cluster
-files stay ignored and travel privately with the exact plan for cluster apply.
-
-Shared NGINX/NLB Helm values live in
-`../helm/platform/nginx-ingress-values.yaml.tftpl`; `platform/main.tf` supplies
-the ACM certificate reference when installing the ingress controller.
-
-Platform inputs come directly from the services outputs. Services application
-refreshes `argocd/*-values.yaml` from non-secret SSM metadata automatically.
-Runtime secret values are never copied into GitOps files.
-
-Runner/access prerequisites and plan review are documented in
-[CONFIGURATION.md](../docs/CONFIGURATION.md). Destruction guards and retained-data
-handling are documented in [OPERATIONS.md](../docs/OPERATIONS.md).
+`prepare-cluster.py` remains a focused compatibility helper: it renders narrow
+administrator CIDRs, checks DNS delegation, generates ignored kOps Terraform and
+preserves the pinned load-balancer webhook bootstrap fix. It does not apply
+infrastructure. Shared NGINX/NLB Helm values live in `helm/platform/`.

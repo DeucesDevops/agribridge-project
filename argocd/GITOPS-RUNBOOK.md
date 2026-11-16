@@ -2,10 +2,10 @@
 
 ## Install
 
-Run the infrastructure workflow's bootstrap, cluster, services and platform stages
-in order. Services application publishes current non-secret references to these
-values files. Platform application installs the controller and bootstrap chart
-with Argo CD enabled. See [reproduction](../docs/REPRODUCTION.md).
+Run Terraform's bootstrap, cluster, services and platform boundaries from your
+terminal in order. Refresh non-secret references after services apply and publish
+them through dev → PR → main. Platform apply installs the controller and bootstrap
+chart with Argo CD enabled. See [reproduction](../docs/REPRODUCTION.md).
 
 The controller stays private. It watches `main` and renders the same application
 chart with environment behavior first, then environment runtime/release values.
@@ -34,8 +34,8 @@ kubectl -n agribridge-staging get pods,externalsecrets,pvc
 kubectl -n agribridge-production get pods,externalsecrets,pvc
 ```
 
-Dispatch `operations.yaml`, `task=check`, for each environment to verify public and
-runtime acceptance. Image references must be immutable digests; `/version` must
+Use the direct health and smoke-test commands in [operations](../docs/OPERATIONS.md)
+for each environment to verify public and runtime acceptance. Image references must be immutable digests; `/version` must
 identify their source commit and run tag. Readiness must distinguish a missing
 cache from a missing database.
 

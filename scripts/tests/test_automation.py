@@ -1,4 +1,4 @@
-"""Offline checks for cluster preparation, destructive guards and restore isolation."""
+"""Offline checks for cluster preparation and restore isolation."""
 import importlib.util
 import json
 import os
@@ -14,14 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("cluster", ROOT / "scripts/prepare-cluster.py")
 cluster = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cluster)
-
-
-def workflow(name):
-    return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
-
-
-def step_named(job, name):
-    return next(step for step in job["steps"] if step.get("name") == name)
 
 
 class ClusterTests(unittest.TestCase):
@@ -80,15 +72,6 @@ class ClusterTests(unittest.TestCase):
         self.assertNotIn("matchConditions", hooks[1])
         cluster.prepare_generated(directory)
         self.assertEqual((directory / "kubernetes.tf").read_text(), result)
-
-
-class WorkflowTests(unittest.TestCase):
-    def test_cloud_workflows_are_manual_and_share_maintenance_lock(self):
-        for name in ("infrastructure.yaml", "operations.yaml"):
-            value = workflow(name)
-            triggers = value.get("on", value.get(True))
-            self.assertEqual(set(triggers), {"workflow_dispatch"})
-            self.assertEqual(value["concurrency"]["group"], "agribridge-cloud-maintenance")
 
 
 class RestoreTests(unittest.TestCase):
