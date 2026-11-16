@@ -331,7 +331,7 @@ jobs:
         env:
           TF_DIRECTORY: ${{ matrix.directory }}
         run: |
-          terraform -chdir="$TF_DIRECTORY" init -backend=false -input=false
+          terraform -chdir="$TF_DIRECTORY" init -backend=false -input=false -lockfile=readonly
           terraform -chdir="$TF_DIRECTORY" validate -no-color
 
   validation:

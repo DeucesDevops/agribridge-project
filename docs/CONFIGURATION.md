@@ -114,3 +114,9 @@ open a verified session, run the selected health/backup/isolated restore/resilie
 task, retain evidence and clean up. `.github/ci/operations.py` centralizes these
 commands and enforces environment guards before cluster operations. The helper
 uses existing Helm resources; it does not install Terraform or provision AWS.
+
+
+Provider locks include the Linux amd64 checksums generated and verified by
+Terraform on the kops control host, alongside the existing macOS checksums.
+CI and infrastructure keep `-lockfile=readonly`; adding a new runner platform
+requires recording its verified provider hashes first.
