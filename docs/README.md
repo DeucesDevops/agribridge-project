@@ -4,8 +4,9 @@
 |---|---|
 | [ASSESSMENT.md](ASSESSMENT.md) | Original course requirements |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Ownership, folders and interview explanation |
-| [CONFIGURATION.md](CONFIGURATION.md) | Runner, authentication, environments and configuration |
-| [REPRODUCTION.md](REPRODUCTION.md) | Ordered local and GitHub Actions setup |
+| [CONFIGURATION.md](CONFIGURATION.md) | Terminal access, environments and configuration |
+| [REPRODUCTION.md](REPRODUCTION.md) | Local run, direct Terraform setup and application CI/CD |
+| [DNS.md](DNS.md) | Namecheap delegation, Route 53 and HTTPS |
 | [OPERATIONS.md](OPERATIONS.md) | Checks, backups, restore testing, rollback and teardown |
 | [VERIFICATION.md](VERIFICATION.md) | Validation performed and remaining live checks |
 | [Operational acceptance](evidence/ACCEPTANCE.md) | Recorded cache, persistence and backup-restore results |

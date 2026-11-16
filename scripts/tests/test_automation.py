@@ -1,4 +1,4 @@
-"""Offline checks for cluster preparation, destructive guards and restore isolation."""
+"""Offline checks for cluster preparation and restore isolation."""
 import importlib.util
 import json
 import os
@@ -14,14 +14,6 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("cluster", ROOT / "scripts/prepare-cluster.py")
 cluster = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cluster)
-
-
-def workflow(name):
-    return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
-
-
-def step_named(job, name):
-    return next(step for step in job["steps"] if step.get("name") == name)
 
 
 class ClusterTests(unittest.TestCase):
@@ -80,49 +72,6 @@ class ClusterTests(unittest.TestCase):
         self.assertNotIn("matchConditions", hooks[1])
         cluster.prepare_generated(directory)
         self.assertEqual((directory / "kubernetes.tf").read_text(), result)
-
-
-class WorkflowTests(unittest.TestCase):
-    def run_guard(self, name, job, step, variables):
-        source = step_named(workflow(name)["jobs"][job], step)["run"]
-        return subprocess.run(["bash", "-euo", "pipefail", "-c", source],
-                              env=dict(os.environ, **variables), capture_output=True, text=True)
-
-    def test_bootstrap_destroy_is_rejected_before_cloud_commands(self):
-        result = self.run_guard("infrastructure.yaml", "plan",
-                                "Validate request and select the existing state boundary",
-                                {"ACTION": "destroy", "STAGE": "bootstrap", "CONFIRMATION": "cluster",
-                                 "CLUSTER_NAME": "cluster"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Bootstrap state and DNS are retained", result.stdout)
-
-    def test_destroy_requires_exact_confirmation_before_cloud_commands(self):
-        result = self.run_guard("infrastructure.yaml", "plan",
-                                "Validate request and select the existing state boundary",
-                                {"ACTION": "destroy", "STAGE": "cluster", "CONFIRMATION": "wrong",
-                                 "CLUSTER_NAME": "cluster"})
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_production_resilience_is_rejected_before_cluster_commands(self):
-        result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate task and establish a short-lived cluster session",
-                                {"TASK": "staging-resilience", "ENVIRONMENT": "production"})
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_restore_key_cannot_select_another_environments_backup(self):
-        result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate task and establish a short-lived cluster session",
-                                {"TASK": "restore-test", "ENVIRONMENT": "staging",
-                                 "BACKUP_KEY": "production/example.dump"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Backup key must belong", result.stdout)
-
-    def test_cloud_workflows_are_manual_and_share_maintenance_lock(self):
-        for name in ("infrastructure.yaml", "operations.yaml"):
-            value = workflow(name)
-            triggers = value.get("on", value.get(True))
-            self.assertEqual(set(triggers), {"workflow_dispatch"})
-            self.assertEqual(value["concurrency"]["group"], "agribridge-cloud-maintenance")
 
 
 class RestoreTests(unittest.TestCase):

@@ -5,7 +5,7 @@ Farmers publish available produce, buyers place orders, and both can track order
 through fulfilment. A mobile-first React interface is backed by an Express API,
 PostgreSQL and Redis.
 
-The repository includes a complete local environment and an automated AWS
+The repository includes a complete local environment and a GitOps AWS
 Kubernetes deployment with separate staging and production environments.
 
 ## Features
@@ -109,8 +109,11 @@ them to Docker Hub. Release image digests are recorded in GitOps configuration;
 Argo CD reconciles the application Helm chart. Production promotion reuses the
 images verified in staging.
 
-Terraform provisions AWS infrastructure and platform services. Runtime credentials
-come from AWS Secrets Manager through External Secrets Operator. Monitoring,
+Run Terraform directly on your kOps management instance to provision AWS and install
+the platform. Use kubectl and Helm directly for maintenance. GitHub Actions handles
+application CI/CD only. The [reproduction guide](docs/REPRODUCTION.md) gives the commands.
+
+Runtime credentials come from AWS Secrets Manager through External Secrets Operator. Monitoring,
 centralized logs and database backup/restore jobs support application operations.
 
 | Guide | Contents |
@@ -126,7 +129,7 @@ centralized logs and database backup/restore jobs support application operations
 | Directory | Purpose |
 |---|---|
 | `frontend/`, `api/` | Application source and tests |
-| `.github/workflows/` | Delivery, infrastructure and operations workflows |
+| `.github/workflows/` | Application CI/CD, security scans and promotion |
 | `terraform/` | Infrastructure configuration, kOps cluster definition and reusable modules |
 | `helm/` | Application and Argo CD bootstrap charts; shared platform Helm values |
 | `argocd/` | GitOps applications and release values |

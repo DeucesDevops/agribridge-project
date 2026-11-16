@@ -12,8 +12,7 @@ promoted unchanged between environments.
 | Terraform | AWS networking/compute through kOps-generated Terraform, DNS/TLS, runtime secrets, workload IAM, backups/logging resources, namespaces, storage and platform Helm releases |
 | Argo CD | Application Deployments, Services, PostgreSQL StatefulSet/PVC templates, Redis, ingress, runtime secret references, monitoring rules and backup CronJobs from `helm/agribridge` |
 | GitHub delivery workflow | Tests, immutable image publication, GitOps release selections and acceptance gates |
-| GitHub infrastructure workflow | Ordered Terraform plans/applies with remote state locking |
-| GitHub operations workflow | Explicit maintenance jobs and acceptance checks |
+| Administrator terminal | Ordered Terraform plans/applies with remote state locking; kubectl/Helm maintenance |
 
 Terraform's small Argo CD bootstrap chart installs the AppProject and Application
 objects after the controller's CRDs exist. It is platform installation, not a
@@ -30,7 +29,7 @@ second owner of application Deployments.
 Backend keys remain `bootstrap/terraform.tfstate`, `kops/terraform.tfstate`,
 `services/terraform.tfstate` and `platform/terraform.tfstate`. Bootstrap's first
 local application is a one-time prerequisite for the state bucket; subsequent
-workflow runs use the existing bootstrap recovery key as a locked S3 backend.
+terminal runs use the existing bootstrap recovery key as a locked S3 backend.
 
 The public path is Route 53 → AWS NLB with ACM TLS termination → NGINX → frontend/API.
 PostgreSQL uses persistent EBS-backed storage. External Secrets resolves application
@@ -42,8 +41,8 @@ Fluent Bit sends structured application logs to CloudWatch.
 - Helm's `values-staging.yaml` and `values-production.yaml` describe environment
   behavior. Both environments share one chart and one cluster, with separate namespaces.
 - `argocd/*-values.yaml` contains automatically refreshed runtime references and
-  CI-selected image digests. Services apply reads Terraform-published SSM metadata,
-  refreshes these files and commits the changes without copying outputs by hand.
+  CI-selected image digests. After services apply, the administrator refreshes
+  these files from non-secret SSM metadata and uses the dev → PR → main flow.
 - Image identity comes from the source commit, run ID and build date. Production
   receives staging's published digests without a rebuild.
 - Secret values stay out of images, chart values and Git. Terraform state and plans
