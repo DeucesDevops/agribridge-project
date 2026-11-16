@@ -1,0 +1,14 @@
+name: Run an application operations task
+description: Shared health, backup, isolated restore and staging resilience tasks
+inputs:
+  task:
+    description: validate, health, backup, restore, resilience, diagnostics or cleanup
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Run the selected guarded operation
+      shell: bash
+      env:
+        OPERATIONS_TASK: ${{ inputs.task }}
+      run: python3 .github/ci/operations.py "$OPERATIONS_TASK"

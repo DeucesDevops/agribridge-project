@@ -108,3 +108,9 @@ Main delivery, infrastructure and operations share `agribridge-cloud-maintenance
 Do not dispatch multiple maintenance requests while another is pending: GitHub's
 concurrency model retains only one pending run in a group. Separate dev/PR groups
 let read-only checks proceed independently of cloud maintenance.
+
+The operations workflow also contains named actions only: validate the request,
+open a verified session, run the selected health/backup/isolated restore/resilience
+task, retain evidence and clean up. `.github/ci/operations.py` centralizes these
+commands and enforces environment guards before cluster operations. The helper
+uses existing Helm resources; it does not install Terraform or provision AWS.

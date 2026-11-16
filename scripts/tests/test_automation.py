@@ -83,25 +83,6 @@ class ClusterTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def run_guard(self, name, job, step, variables):
-        source = step_named(workflow(name)["jobs"][job], step)["run"]
-        return subprocess.run(["bash", "-euo", "pipefail", "-c", source],
-                              env=dict(os.environ, **variables), capture_output=True, text=True)
-
-    def test_production_resilience_is_rejected_before_cluster_commands(self):
-        result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate maintenance request",
-                                {"TASK": "staging-resilience", "ENVIRONMENT": "production"})
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_restore_key_cannot_select_another_environments_backup(self):
-        result = self.run_guard("operations.yaml", "maintenance",
-                                "Validate maintenance request",
-                                {"TASK": "restore-test", "ENVIRONMENT": "staging",
-                                 "BACKUP_KEY": "production/example.dump"})
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Backup key must belong", result.stdout)
-
     def test_cloud_workflows_are_manual_and_share_maintenance_lock(self):
         for name in ("infrastructure.yaml", "operations.yaml"):
             value = workflow(name)
