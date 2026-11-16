@@ -14,7 +14,7 @@ runtime, and this folder does not provision or contact AWS.
 | `sonar-project.properties` | One `agribridge` project, analysis scope, coverage import and quality-gate enforcement |
 | `prepare-coverage.py` | Validates and combines component LCOV reports using repository-relative source paths |
 | `test_coverage.py` | Checks path mapping, report combination and missing/invalid coverage failures |
-| `../.github/workflows/delivery.yaml` | Optional main-branch gate inside `checks`, before the dependent `publish` job |
+| `../.github/workflows/delivery.yaml` | Dedicated optional main-branch `sonarqube` job, before container publication |
 
 The analysis includes API JavaScript, frontend JavaScript/JSX/CSS, authored
 Terraform, both application Dockerfiles and the application Compose definition,
@@ -100,8 +100,8 @@ first. Tokens belong to the server that issued them. For a custom certificate
 authority, configure `SONAR_ROOT_CERT` on the scan-action steps as described in
 the official action documentation; do not disable TLS verification.
 
-To verify CI scanning while AWS remains offline, dispatch **Actions → Verify,
-publish and release through GitOps → Run workflow**, choosing `main` and enabling
+To verify CI scanning while AWS remains offline, dispatch **Actions → AgriBridge
+DevSecOps Pipeline → Run workflow**, choosing `main` and enabling
 `analysis_only`. This requires the URL and token even if `SONAR_ENABLED` is unset.
 It runs the checks and SonarQube gate, then skips image publication and all
 release jobs. The previous separate analysis workflow has been consolidated into
@@ -110,13 +110,13 @@ this mode of `delivery.yaml`.
 When enabled, the delivery sequence is:
 
 1. Lint, dependency audit, application tests and coverage.
-2. SonarQube analysis and quality gate in `checks`.
-3. Remaining platform validation; all `checks` must succeed.
-4. Docker build, runtime checks, Trivy scan and image publication in `publish`.
-5. Existing Argo CD staging verification and production promotion.
+2. SonarQube downloads both components' coverage artifacts and enforces its gate.
+3. Source scans, the frontend build and platform validation must all pass.
+4. Docker build, runtime checks, Trivy scans and SBOMs; publish only on main.
+5. Argo CD staging verification and production promotion when `DEPLOY_ENABLED=true`.
 
 The gate has no `continue-on-error` override. Missing settings or a failed scan
-fail `checks`, preventing the dependent image-publication job. Community Build
+fail `sonarqube` and the aggregate `checks`, preventing image publication. Community Build
 supports main-branch analysis only, so pull requests keep the existing CI checks
 and do not receive a SonarQube scan. Feature-branch and pull-request analysis
 require a supported edition/service and a corresponding workflow change.

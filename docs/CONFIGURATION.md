@@ -28,6 +28,7 @@ network access to the Kubernetes API.
 | Variable `KUBERNETES_API_CIDRS` | Comma-separated narrow public runner/VPN CIDRs |
 | Variable `DOCKERHUB_USERNAME` | Docker Hub namespace; defaults to `macroni607` |
 | Secret `DOCKERHUB_TOKEN` | Image publication credential |
+| Variable `DEPLOY_ENABLED` | Set `true` only when the existing platform is running, to enable staging/production deployment; unset keeps publishing independent of AWS |
 | Variable `SONAR_ENABLED` | Set `true` to enforce the SonarQube gate on releases |
 | Variable `SONAR_HOST_URL` | SonarQube address reachable by the delivery runner |
 | Secret `SONAR_TOKEN` | SonarQube analysis credential |
