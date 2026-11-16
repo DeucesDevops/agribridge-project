@@ -116,6 +116,7 @@ centralized logs and database backup/restore jobs support application operations
 | Guide | Contents |
 |---|---|
 | [Configuration](docs/CONFIGURATION.md) | Environment settings, repository variables and secrets |
+| [DevSecOps pipeline](docs/PIPELINE.md) | Job stages, security gates, framework comparison and offline deployment mode |
 | [Deployment guide](docs/REPRODUCTION.md) | Infrastructure setup and deployment prerequisites |
 | [Operations runbook](docs/OPERATIONS.md) | Monitoring, rollback, backup, restore and teardown |
 | [SonarQube](sonarqube/README.md) | Optional local code-quality analysis |

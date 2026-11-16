@@ -4,6 +4,7 @@ Secret values are never read. Only CI's commit command writes to GitHub.
 """
 import argparse
 import copy
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,34 @@ import re
 import subprocess
 
 import yaml
+
+
+def identity():
+    """Resolve one build identity for Compose, scans, publishing and promotion."""
+    values = yaml.safe_load(values_path("staging").read_text())
+    namespace = os.environ.get("DOCKERHUB_USERNAME", "macroni607")
+    if not re.fullmatch(r"[a-z0-9_-]+", namespace):
+        raise ValueError("Unexpected Docker Hub namespace")
+    sha = os.environ["GITHUB_SHA"]
+    run_id, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
+    if not re.fullmatch(r"[0-9a-f]{40}", sha) or not run_id.isdecimal() or not attempt.isdecimal():
+        raise ValueError("Expected a GitHub commit/run/attempt identity")
+    images = {}
+    for component in ("api", "web"):
+        repository = values[component]["repository"]
+        if repository != f"docker.io/{namespace}/agribridge-{component}":
+            raise ValueError("Docker Hub login namespace and GitOps repository disagree")
+        images[component.upper() + "_IMAGE"] = repository
+    version = json.loads(Path("api/package.json").read_text())["version"]
+    if not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
+        raise ValueError("Unexpected application version")
+    tag = f"{sha}-{run_id}-{attempt}"
+    environment = dict(images, IMAGE_TAG=tag, GIT_SHA=sha, APP_VERSION=version,
+                       BUILD_DATE=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    with open(os.environ["GITHUB_ENV"], "a") as output:
+        output.writelines(f"{key}={value}\n" for key, value in environment.items())
+    with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+        output.write(f"tag={tag}\n")
 
 
 def run(*args, **kwargs):
@@ -128,7 +157,7 @@ def commit(environment, expected_tag):
         raise ValueError("Refusing to commit an unexpected release")
     # A new source push must be built and checked by its own queued workflow.
     run("git", "diff", "--exit-code", expected_tag.split("-")[0], "HEAD", "--",
-        "api", "frontend", "helm/agribridge", "scripts", ".github/workflows",
+        "api", "frontend", "helm/agribridge", "scripts", ".github",
         "docker-compose.yml", "argocd/project.yaml",
         "argocd/staging-application.yaml", "argocd/production-application.yaml")
     changed = subprocess.run(["git", "diff", "--quiet", "--", str(path)])
@@ -149,6 +178,7 @@ def commit(environment, expected_tag):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("identity")
     record_parser = commands.add_parser("record")
     record_parser.add_argument("destination", type=Path)
     configure_parser = commands.add_parser("configure")
@@ -162,7 +192,9 @@ def main():
     commit_parser.add_argument("environment", choices=["staging", "production"])
     commit_parser.add_argument("--expected-tag", required=True)
     args = parser.parse_args()
-    if args.command == "configure":
+    if args.command == "identity":
+        identity()
+    elif args.command == "configure":
         configure(args.environment, args.metadata)
     elif args.command == "record":
         record(args.destination)
