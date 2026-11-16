@@ -47,6 +47,12 @@ class InfrastructureTests(unittest.TestCase):
                     infra.select()
                 command.assert_not_called()
 
+    def test_backend_override_is_valid_terraform_hcl(self):
+        infra.backend_override()
+        result = subprocess.run(['terraform', 'fmt', '-check', 'terraform/bootstrap/backend_override.tf'],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_only_apply_or_destroy_can_execute_the_saved_plan(self):
         with patch.dict(os.environ, {'ACTION': 'plan'}), patch.object(infra, 'run') as command:
             with self.assertRaises(ValueError): infra.apply()

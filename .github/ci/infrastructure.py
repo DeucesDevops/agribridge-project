@@ -62,12 +62,16 @@ def init(directory, key):
         '-backend-config=encrypt=true', '-backend-config=use_lockfile=true')
 
 
+def backend_override():
+    Path('terraform/bootstrap/backend_override.tf').write_text('terraform {\n  backend "s3" {}\n}\n')
+
+
 def select():
     stage, action, directory, key = request()  # Reject unsafe requests before cloud commands.
     output(directory=directory, key=key)
     run('aws', 's3api', 'head-object', '--bucket', os.environ['STATE_BUCKET'],
         '--key', BOUNDARIES['bootstrap'][1], stdout=subprocess.DEVNULL)
-    Path('terraform/bootstrap/backend_override.tf').write_text('terraform { backend "s3" {} }\n')
+    backend_override()
     init(*BOUNDARIES['bootstrap'])
     private_output(RUNTIME / 'bootstrap-outputs.json', 'terraform', '-chdir=terraform/bootstrap', 'output', '-json')
 
@@ -179,7 +183,7 @@ def restore():
             if not (member.isfile() or member.isdir()) or not any(path == root or root in path.parents for root in roots):
                 raise ValueError('Unexpected path or link in saved plan bundle')
         archive.extractall()  # Paths and links were checked above; bundle SHA verified before opening.
-    Path('terraform/bootstrap/backend_override.tf').write_text('terraform { backend "s3" {} }\n')
+    backend_override()
     init(directory, key)
 
 
