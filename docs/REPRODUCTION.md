@@ -128,6 +128,40 @@ The context must be `k8s.agribridge.deuces.dev`. The helper generates kOps
 Terraform and preserves its bootstrap compatibility fix; Terraform provisions
 the resources. Do not also run `kops update --yes`, which bypasses Terraform.
 
+### Recovery when reusing an old kOps state store
+
+If the replacement control plane has empty etcd disks, but the S3 store retains
+`etcd-cluster-created`, etcd-manager can report **0 members registered; must issue
+restore-backup command**. The API will not start and its DNS record can remain
+absent. Repeated Terraform applies do not repair that condition.
+
+Use the official `etcd-manager-ctl` client with authorized access to the retained
+backup store. The client is also included in the running etcd-manager container
+image. List both stores and choose verified backups from before the teardown:
+
+```sh
+etcd-manager-ctl --backup-store=s3://kops-state-607/k8s.agribridge.deuces.dev/backups/etcd/main list-backups
+etcd-manager-ctl --backup-store=s3://kops-state-607/k8s.agribridge.deuces.dev/backups/etcd/events list-backups
+```
+
+Queue a restore for each store using its exact listed backup name:
+
+```sh
+# Replace MAIN_BACKUP and EVENTS_BACKUP with the selected names.
+etcd-manager-ctl --backup-store=s3://kops-state-607/k8s.agribridge.deuces.dev/backups/etcd/main restore-backup "$MAIN_BACKUP"
+etcd-manager-ctl --backup-store=s3://kops-state-607/k8s.agribridge.deuces.dev/backups/etcd/events restore-backup "$EVENTS_BACKUP"
+```
+
+Inspect the queued commands and recovery logs. Follow the
+[official kOps recovery procedure](https://kops.sigs.k8s.io/operations/etcd_backup_restore_encryption/)
+for restarting etcd-manager when required, then repeat cluster validation and
+controller readiness checks. Preserve the backup objects and Terraform state;
+do not clear the S3 control markers to force an empty cluster.
+
+Etcd recovery restores Kubernetes metadata. PostgreSQL data needs its retained
+EBS volume or a separately verified database backup. Check storage identities
+before changing claims or declaring application data recovered.
+
 ## 5. Configure AWS application services
 
 ```sh
