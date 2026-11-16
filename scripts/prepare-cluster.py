@@ -1,6 +1,6 @@
 """Prepare kOps Terraform input and wait for platform prerequisites.
 
-GitHub Actions owns sequencing and Terraform execution. This helper only handles
+Run Terraform directly from your terminal. This helper only handles
 kOps-specific manifest generation and its pinned bootstrap compatibility fix.
 """
 import argparse
@@ -65,7 +65,9 @@ def generate(outputs_path, cidrs, destroy):
     }:
         raise ValueError("Delegate the project DNS zone before planning the cluster")
     if not destroy:
-        Path(".runtime/automation/cluster.yaml").write_text(render(outputs, cidrs, cluster_name))
+        manifest = Path(".runtime/automation/cluster.yaml")
+        manifest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        manifest.write_text(render(outputs, cidrs, cluster_name))
         # List successfully before deciding absence; never mistake access failure for absence.
         result = subprocess.run(["kops", "get", "clusters", "-o", "json"], text=True, capture_output=True)
         if result.returncode:

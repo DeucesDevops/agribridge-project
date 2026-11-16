@@ -1,6 +1,6 @@
 """Controlled staging-only Redis/PostgreSQL pod restarts and recovery evidence.
 
-Run explicitly through operations.yaml. Production is not restarted.
+Run explicitly from an authorized terminal. Production is not restarted.
 No application rows are written; credentials remain inside the API pod.
 """
 import json

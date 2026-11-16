@@ -1,76 +1,46 @@
 # Verification
 
-## Scope
+## 16 November 2026 — course-style simplification
 
-This guide records the checks for the cloud automation/GitOps refactor on `dev`.
-AWS application infrastructure remains offline. The implementation has not been
-verified by applying or destroying cloud resources during this review.
+Reviewed the authenticated Udemy curriculum and its public QA workflow. The
+AgriBridge security/build/promotion flow already followed the same stages.
+Infrastructure and operations now use direct terminal commands; their workflows,
+runner setup and task/bundle wrappers have been removed. Existing Terraform
+state keys, resource addresses, Helm workloads and Argo CD ownership are retained.
 
-The earlier AWS demonstration includes completed cache-resilience, database
-persistence and isolated staging/production restore receipts. Their sanitized
-[operational acceptance summary](evidence/ACCEPTANCE.md) records those results
-separately from validation of the refactored workflows.
-
-## Local checks — 7 November 2026
-
-| Check | Result and scope |
+| Offline check | Result |
 |---|---|
-| Automation, release and Helm-render tests | 24 tests passed |
-| SonarQube coverage preparation | 4 tests passed; this validates report handling, not a server analysis |
-| Local verification script | Bash syntax passed; full Docker execution requires engine access |
-| Terraform formatting | Passed |
-| Application Helm chart | Lint passed; both environment renders are exercised by the tests |
-| Workflow lint | Passed actionlint with ShellCheck enabled, matching CI |
-| Markdown links | Passed; no missing local targets in the current guides |
+| Cluster preparation, release, restore isolation, Helm rendering and CI gates | 28 tests passed |
+| SonarQube coverage-report preparation | 4 tests passed |
+| API unit tests and coverage | 42 tests passed |
+| Frontend unit tests and coverage | 15 tests passed |
+| API/frontend lint | Passed |
+| Frontend production build | Passed |
+| Terraform formatting, Helm lint, Bash syntax | Passed |
+| Local Markdown links | Passed |
+| Terraform provider schema validation on workstation | Blocked: local AWS provider plugin could not start under this session |
 
-The workflow-lint fix groups repeated output redirects in the delivery and
-infrastructure workflows. ShellCheck remains enabled; no warning is suppressed.
+These checks do not establish a running cloud environment, successful live
+SonarQube analysis or fresh vulnerability scan results. Full scans, container
+acceptance and provider validation must pass on the exact PR commit in Actions
+before merging. Do not use an older green commit as evidence for a new head.
 
-## GitHub Actions acceptance
+## DNS and AWS inspection
 
-Use [PR #2 checks](https://github.com/DeucesDevops/agribridge-project/pull/2/checks)
-to inspect the latest result for the exact commit being considered for merge.
-Earlier green results on another commit do not validate a new branch head.
+Namecheap's four `agribridge` NS records match Route 53 zone
+`Z098670523YNOQ1LDBYDG`; no registrar change was necessary. Only the `kops`
+management instance was running in us-east-1 during the initial inspection.
+The child zone had no staging/production application routing records. Retained
+Terraform state still describes earlier resources, so a refreshed plan and live
+verification are required before restoration. See [DNS.md](DNS.md).
 
-The checks job must complete all of the following:
+## Live acceptance still required
 
-- Reproducible dependency installation, linting and dependency audit.
-- API unit/coverage tests and integration tests against real PostgreSQL.
-- Frontend unit/coverage tests and the production build.
-- Coverage-path preparation, automation/release tests and Helm lint/render checks.
-- NGINX/NLB rendering, actionlint/ShellCheck, Bash syntax and Terraform checks.
-- Test-report and coverage artifact publication.
+1. Inspect the PR's full validation, security scan and container results.
+2. Review current remote-state Terraform plans and apply intended changes.
+3. Verify both Argo CD Applications, HTTPS readiness and matching image digests.
+4. Run backups, isolated restores and the deliberate staging resilience test.
+5. Record actual run URLs and non-secret receipts under `docs/evidence/`.
 
-Generated cluster Terraform validation is intentionally deferred in a clean CI
-checkout until kOps generates that configuration. Terraform formatting alone is
-not a provider-schema validation or an AWS plan.
-
-PR runs intentionally skip image publication and deployment. SonarQube is also
-skipped on PRs under the current Community Build integration. A passing PR does
-not demonstrate a live SonarQube gate, an image scan/publication or an Argo CD sync.
-
-## Security finding
-
-Resolve the GitGuardian finding attached to the PR independently of application
-CI. The scanner examines commit history as well as the current source tree; simply
-deleting a value from the latest tree may not resolve a historical finding.
-Do not dismiss a finding without checking its source and credential validity.
-Do not put detected values in this report, commit messages or pipeline logs.
-
-The finding in commit `2cb700c47de8aca96e93cb8788175f0d674b883b`, historical
-`compose.yaml` line 24, was traced to a required `REDIS_PASSWORD` environment
-interpolation and its setup error message. That line contains no literal password
-or fallback credential. Record this as a false positive in GitGuardian after
-signing in; keep repository secret scanning enabled.
-
-## Live checks still required
-
-After separately configuring the runner, OIDC roles and protected environments:
-
-1. Review and apply the infrastructure stages against the existing state keys.
-2. Complete a delivery run through staging and production with the same digests.
-3. Run operational acceptance in both environments.
-4. Verify a backup, isolated restore test and staging resilience demonstration.
-
-Record new workflow URLs and non-secret results under `docs/evidence/`. Earlier
-deployment evidence is historical and does not establish current service uptime.
+Historical [operational acceptance](evidence/ACCEPTANCE.md) and earlier reviews
+remain evidence of previous demonstrations, not current service uptime.

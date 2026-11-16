@@ -2,7 +2,7 @@
 
 SonarQube adds source-code analysis, duplication and maintainability findings,
 security rules and coverage reporting to AgriBridge. It complements ESLint,
-Vitest, `npm audit` and Trivy. The application does not depend on SonarQube at
+Vitest and Trivy. The application does not depend on SonarQube at
 runtime, and this folder does not provision or contact AWS.
 
 ## What is included
@@ -109,9 +109,9 @@ this mode of `delivery.yaml`.
 
 When enabled, the delivery sequence is:
 
-1. Lint, dependency audit, application tests and coverage.
+1. Lint, Trivy dependency scanning, application tests and coverage.
 2. SonarQube downloads both components' coverage artifacts and enforces its gate.
-3. Source scans, the frontend build and platform validation must all pass.
+3. Source scans and platform validation must all pass; the frontend build is enforced inside Docker.
 4. Docker build, runtime checks, Trivy scans and SBOMs; publish only on main.
 5. Argo CD staging verification and production promotion when `DEPLOY_ENABLED=true`.
 

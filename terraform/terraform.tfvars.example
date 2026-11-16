@@ -1,4 +1,4 @@
-# Documentation only; the workflow supplies the required account/discovery inputs.
+# Copy to .runtime/services.tfvars and review before planning.
 region              = "us-east-1"
 expected_account_id = "237258628535"
 discovery_bucket    = "agribridge-oidc-237258628535"
