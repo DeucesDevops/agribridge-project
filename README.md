@@ -1,12 +1,11 @@
 # AgriBridge
 
-AgriBridge is a grain marketplace connecting farmers with institutional buyers.
-Farmers publish available produce, buyers place orders, and both can track orders
-through fulfilment. A mobile-first React interface is backed by an Express API,
-PostgreSQL and Redis.
+AgriBridge is a grain marketplace. Farmers publish produce, buyers place orders,
+and both can follow an order through fulfilment. The web app is React and Vite.
+The API is Express, with PostgreSQL and Redis.
 
-The repository includes a complete local environment and a GitOps AWS
-Kubernetes deployment with separate staging and production environments.
+Local development uses Docker Compose. The cloud environment is a kOps cluster
+on AWS, with a short GitHub Actions pipeline that deploys QA and then production.
 
 ## Features
 
@@ -18,30 +17,43 @@ Kubernetes deployment with separate staging and production environments.
 
 ## Architecture
 
-![AgriBridge system architecture](docs/images/agribridge-architecture.svg)
+```mermaid
+flowchart LR
+  browser[Browser] --> dns[Route 53]
+  dns --> alb[Application Load Balancer]
+  alb --> web[Web]
+  web --> api[API]
+  api --> pg[PostgreSQL]
+  api --> redis[Redis]
+  gha[GitHub Actions] --> hub[Docker Hub]
+  gha --> kops[kOps cluster]
+  secrets[Secrets Manager] --> eso[External Secrets]
+  eso --> api
+```
 
-The frontend serves the web application and proxies `/api` requests to Express
-through the same origin. PostgreSQL stores application data; Redis caches
-responses. The API exposes health, readiness, metrics and build-version endpoints.
+The web container serves the React app and proxies `/api` to Express. PostgreSQL
+stores the data. Redis caches responses. The API exposes health, readiness,
+metrics and version endpoints.
 
 | Layer | Technology |
 |---|---|
 | Frontend | React, Vite, NGINX |
 | API | Node.js, Express |
-| Data | PostgreSQL with persistent storage; Redis |
+| Data | PostgreSQL and Redis in the cluster |
 | Local environment | Docker Compose |
-| Infrastructure | Terraform; kOps Kubernetes on AWS EC2 |
-| Delivery | GitHub Actions, Docker Hub, Helm, Argo CD |
-| Traffic and secrets | Route 53, ACM, Network Load Balancer, NGINX ingress, AWS Secrets Manager, External Secrets Operator |
-| Observability and recovery | Prometheus, Grafana, Fluent Bit, CloudWatch Logs, S3 database backups |
+| Cluster | kOps on EC2. The manifest is `kops/cluster.yaml` |
+| Delivery | GitHub Actions, Docker Hub, Helm |
+| Traffic | Route 53, ACM, the AWS Load Balancer Controller installed by kOps |
+| Secrets | AWS Secrets Manager and External Secrets, using the kOps service-account issuer |
+| Observability | Prometheus, Grafana, Loki, Promtail and Tempo |
 
-Staging and production share a cluster, with separate namespaces, secrets and
-database volumes. Both run the same application image digests. See the
-[architecture reference](docs/ARCHITECTURE.md) for deployment details.
+QA and production are namespaces on the same cluster. They use the same image
+tag and separate secrets and database volumes. Build it in the order in
+[docs/SETUP.md](docs/SETUP.md).
 
 ## Quick start
 
-Install Docker with **Docker Compose v2**, then run:
+Install Docker with Docker Compose v2, then run:
 
 ```sh
 git clone https://github.com/DeucesDevops/agribridge-project.git
@@ -50,11 +62,11 @@ cp .env.example .env
 docker compose up --build -d --wait
 ```
 
-Open **[http://localhost:8080](http://localhost:8080)**.
+Open [http://localhost:8080](http://localhost:8080).
 
-Compose builds the frontend and API, starts PostgreSQL and Redis, and initializes
-the database with demonstration data. The example environment contains local
-values; choose your own throwaway values in `.env` before starting.
+Compose builds the web app and the API, starts PostgreSQL and Redis, and loads
+demonstration data. Copy `.env.example` to `.env` and change the passwords
+before you start.
 
 ### Demo accounts
 
@@ -63,30 +75,23 @@ values; choose your own throwaway values in `.env` before starting.
 | Farmer | `amina.yusuf@example.ng` |
 | Buyer | `procurement@sahelmills.example` |
 
-Use the value of **`SEED_PASSWORD` in your local `.env`** as the password for both
-accounts. Demo data is enabled locally; production is not seeded.
+The password is the value of `SEED_PASSWORD` in your local `.env`. QA can load
+the same demonstration data. Production does not.
 
 ### Useful commands
 
 ```sh
-# Check the containers
 docker compose ps
-
-# Follow API logs
 docker compose logs -f api
-
-# Stop the application; retain database data
 docker compose down
 ```
 
-The web port defaults to `8080`. To use another port, add `WEB_LOCAL_PORT=8081`
-to `.env` and restart Compose. Local PostgreSQL is available on port `5433`;
-`PG_LOCAL_PORT` overrides it.
+The web port defaults to `8080`. Set `WEB_LOCAL_PORT` in `.env` to change it.
+Local PostgreSQL is published on `5433` unless `PG_LOCAL_PORT` is set.
 
 ## Development and testing
 
-Use **Node.js 22** for application development. Install dependencies and run the
-application tests and frontend build:
+Use Node.js 22.
 
 ```sh
 npm ci --prefix api
@@ -96,43 +101,37 @@ npm run test:coverage --prefix frontend
 npm run build --prefix frontend
 ```
 
-With Docker and Make installed, `make local-verify` exercises a disposable
-container stack, including PostgreSQL integration tests, Redis degradation and
-database persistence. `make check` validates helper code, Helm and Terraform
-formatting; it also requires Python dependencies from `scripts/requirements.txt`,
-Helm and Terraform.
+`make check` lints the Helm chart, checks Terraform formatting and runs the
+SonarQube coverage helper tests. It needs Helm, Terraform and Python 3.
 
-## Deployment
+## Cloud delivery
 
-GitHub Actions validates changes, builds and scans container images, and publishes
-them to Docker Hub. Release image digests are recorded in GitOps configuration;
-Argo CD reconciles the application Helm chart. Production promotion reuses the
-images verified in staging.
+GitHub Actions lints and tests the app, scans for secrets and vulnerabilities,
+builds both images, writes a SBOM, and pushes them to Docker Hub. It then
+installs the Helm chart in QA. Production waits for a reviewer on the
+`production` environment and installs the same image tag.
 
-Run Terraform directly on your kOps management instance to provision AWS and install
-the platform. Use kubectl and Helm directly for maintenance. GitHub Actions handles
-application CI/CD only. The [reproduction guide](docs/REPRODUCTION.md) gives the commands.
-
-Runtime credentials come from AWS Secrets Manager through External Secrets Operator. Monitoring,
-centralized logs and database backup/restore jobs support application operations.
+kOps creates the cluster, including the AWS Load Balancer Controller and the
+service-account issuer. Terraform creates the state bucket, the issuer bucket,
+the certificate and the IAM roles. Images are published to Docker Hub. The
+exact commands are in [docs/SETUP.md](docs/SETUP.md).
 
 | Guide | Contents |
 |---|---|
-| [Configuration](docs/CONFIGURATION.md) | Environment settings, repository variables and secrets |
-| [DevSecOps pipeline](docs/PIPELINE.md) | Job stages, security gates, framework comparison and offline deployment mode |
-| [Deployment guide](docs/REPRODUCTION.md) | Infrastructure setup and deployment prerequisites |
-| [Operations runbook](docs/OPERATIONS.md) | Monitoring, rollback, backup, restore and teardown |
-| [SonarQube](sonarqube/README.md) | Optional local code-quality analysis |
+| [Setup](docs/SETUP.md) | Stage-by-stage build, from an empty AWS account to production |
+| [Pipeline](docs/PIPELINE.md) | Each job, and the GitHub settings it needs |
+| [Architecture](docs/ARCHITECTURE.md) | What runs where |
+| [SonarQube](sonarqube/README.md) | Optional local code-quality server |
 
 ## Repository layout
 
 | Directory | Purpose |
 |---|---|
 | `frontend/`, `api/` | Application source and tests |
-| `.github/workflows/` | Application CI/CD, security scans and promotion |
-| `terraform/` | Infrastructure configuration, kOps cluster definition and reusable modules |
-| `helm/` | Application and Argo CD bootstrap charts; shared platform Helm values |
-| `argocd/` | GitOps applications and release values |
-| `monitoring/`, `sonarqube/` | Observability and code-quality configuration |
-| `scripts/` | Local verification and workflow helpers |
-| `docs/` | Architecture, configuration and operations documentation |
+| `.github/workflows/cicd.yaml` | The only delivery workflow |
+| `kops/` | kOps cluster manifest |
+| `terraform/` | Route 53 records, ACM, secrets and IAM |
+| `helm/agribridge/` | Application chart |
+| `platform/` | Storage class and observability Helm values |
+| `sonarqube/` | Optional local SonarQube |
+| `docs/` | Setup, pipeline and architecture |

@@ -1,0 +1,9 @@
+# hostname must match terraform output qa_hostname.
+hostname: qa.agribridge.deuces.dev
+secretName: agribridge/qa
+api:
+  replicas: 1
+web:
+  replicas: 1
+config:
+  SEED_DEMO_DATA: "true"

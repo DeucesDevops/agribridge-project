@@ -1,10 +1,23 @@
-{{- if .Values.releaseEnabled }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ .Release.Name }}
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/group.name: agribridge
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/success-codes: "200"
+    external-dns.alpha.kubernetes.io/hostname: {{ .Values.hostname | quote }}
+    {{- if .Values.certificateArn }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.certificateArn | quote }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    {{- else }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingressClassName | quote }}
+  ingressClassName: alb
   rules:
     - host: {{ .Values.hostname }}
       http:
@@ -14,5 +27,5 @@ spec:
             backend:
               service:
                 name: {{ .Release.Name }}-web
-                port: {number: 8080}
-{{- end }}
+                port:
+                  number: 8080

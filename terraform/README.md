@@ -1,50 +1,35 @@
 # Terraform
 
-Run Terraform from an authorized terminal on your existing kOps management
-instance. GitHub Actions handles application delivery; infrastructure has no
-workflow, self-hosted runner, plan bundle or extra GitHub OIDC roles to configure.
+This root creates everything around the kOps cluster. It does not create the
+cluster. kOps does that from `kops/cluster.yaml`.
 
-| Order | Directory | Responsibility | S3 state key |
-|---|---|---|---|
-| 1 | `bootstrap/` | Retained state/discovery storage and project DNS | `bootstrap/terraform.tfstate` |
-| 2 | `cluster/` | VPC, EC2 nodes, IAM and kOps add-ons | `kops/terraform.tfstate` |
-| 3 | This directory | Secrets, TLS, backup storage, logs and workload IAM | `services/terraform.tfstate` |
-| 4 | `platform/` | Namespaces, storage, ingress, monitoring, logging and Argo CD | `platform/terraform.tfstate` |
+| File | What it creates |
+|---|---|
+| `buckets.tf` | kOps state bucket and the public OIDC discovery bucket |
+| `dns.tf` | ACM certificate and its Route 53 validation records |
+| `secrets.tf` | QA and production Secrets Manager secrets |
+| `iam.tf` | GitHub Actions role, and the External Secrets and ExternalDNS roles |
 
-These boundaries preserve existing resource addresses and state. The cluster
-must exist before the platform can connect to Kubernetes. During teardown,
-remove the platform while Kubernetes and its controllers are still available.
-
-## Standard commands
-
-From the repository root, initialize a boundary with its **existing** state key:
+The External Secrets and ExternalDNS roles are created only when
+`attach_irsa = true`, because kOps has to create the OIDC provider first.
+Their trust policy uses that provider and the audience `amazonaws.com`.
 
 ```sh
-terraform -chdir=terraform init -reconfigure -lockfile=readonly \
-  -backend-config=backend.hcl.example \
-  -backend-config=key=services/terraform.tfstate
-terraform -chdir=terraform plan -var-file=../.runtime/services.tfvars \
-  -out=../.runtime/services.tfplan
-terraform -chdir=terraform apply ../.runtime/services.tfplan
+cp backend.hcl.example backend.hcl
+# Edit backend.hcl and set the state bucket you created by hand.
+terraform init -backend-config=backend.hcl
+terraform apply
 ```
 
-Review each plan before applying it. Plans and state can contain credentials;
-keep `.runtime/` private and out of Git. Never switch keys or apply an old
-workstation state to resolve drift. Retain provider lockfiles and `moved.tf`.
+After `kops update cluster` succeeds:
 
-For the complete bootstrap → cluster → services → platform sequence, including
-state recovery, administrator CIDRs and GitOps references, follow
-[REPRODUCTION.md](../docs/REPRODUCTION.md).
+```sh
+terraform apply -var attach_irsa=true
+```
 
-## Files to edit
+State for this root lives in the bucket from `backend.hcl`, under
+`agribridge/terraform.tfstate`. Do not point it at an older state key from the
+previous bootstrap, services or platform roots. Those roots are gone.
 
-- `backend.hcl.example`: non-secret shared S3 backend settings.
-- `main.tf`, `variables.tf`, `outputs.tf`: AWS services and handoffs.
-- `terraform.tfvars.example`: non-secret service inputs.
-- `modules/`: reusable resource definitions.
-- `cluster/cluster.yaml`: authored kOps Cluster and InstanceGroups.
-
-`prepare-cluster.py` remains a focused compatibility helper: it renders narrow
-administrator CIDRs, checks DNS delegation, generates ignored kOps Terraform and
-preserves the pinned load-balancer webhook bootstrap fix. It does not apply
-infrastructure. Shared NGINX/NLB Helm values live in `helm/platform/`.
+`terraform destroy` does not delete the cluster. Delete the cluster with kOps
+first. The state bucket and the discovery bucket have `prevent_destroy` set.
