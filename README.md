@@ -17,39 +17,76 @@ on AWS, with a short GitHub Actions pipeline that deploys QA and then production
 
 ## Architecture
 
+![AgriBridge architecture](docs/images/agribridge-architecture.svg)
+
+The picture is generated from [`docs/diagrams/architecture.mmd`](docs/diagrams/architecture.mmd).
+A request reaches the API like this. A browser opens the QA or production
+hostname. Route 53 sends it to one Application Load Balancer. TLS is the ACM
+certificate. The load balancer sends traffic to the web pod, which serves the
+React app and proxies `/api` to Express in the same namespace. Express stores
+data in PostgreSQL and caches in Redis. If Redis is down, the API keeps reading
+PostgreSQL and says so on `/readyz`.
+
+Locally, Docker Compose runs the same four processes on your machine. In AWS
+they run from one Helm chart, `helm/agribridge`, with `values-qa.yaml` and
+`values-production.yaml`. The namespaces are `agribridge-qa` and
+`agribridge-production`. They share an image tag and keep separate database
+volumes and secrets.
+
 ```mermaid
 flowchart LR
-  browser[Browser] --> dns[Route 53]
-  dns --> alb[Application Load Balancer]
-  alb --> web[Web]
-  web --> api[API]
-  api --> pg[PostgreSQL]
-  api --> redis[Redis]
-  gha[GitHub Actions] --> hub[Docker Hub]
-  gha --> kops[kOps cluster]
-  secrets[Secrets Manager] --> eso[External Secrets]
-  eso --> api
+  lint["Lint and test"] --> leaks["Gitleaks"]
+  leaks --> sonar["SonarQube optional"]
+  sonar --> fs["Trivy filesystem"]
+  fs --> iac["Checkov, Terraform validate, Helm lint"]
+  iac --> build["Build images"]
+  build --> image["Trivy image and CycloneDX SBOM"]
+  image --> stop["Pull requests and dev stop"]
+  image --> push["Docker Hub on main"]
+  push --> qa["Helm agribridge-qa"]
+  qa --> approve["Production approval"]
+  approve --> prod["Helm production"]
 ```
 
-The web container serves the React app and proxies `/api` to Express. PostgreSQL
-stores the data. Redis caches responses. The API exposes health, readiness,
-metrics and version endpoints.
+That sequence is the only workflow, [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
+SonarQube runs on `main` only when `SONAR_TOKEN` and `SONAR_HOST_URL` are set.
+On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
+`docker.io/macroni607/agribridge-web`. QA installs immediately. Production
+waits for the `production` GitHub environment, then installs the same tag.
+Pull requests and pushes to `dev` stop after the scans. They do not push or deploy.
 
-| Layer | Technology |
+kOps builds the cluster from [`kops/cluster.yaml`](kops/cluster.yaml): the VPC,
+the EC2 nodes, the EBS CSI driver, cert-manager, the AWS Load Balancer
+Controller, and the service-account OIDC issuer. One Terraform root creates the
+GitHub OIDC role, the ACM certificate, the Secrets Manager secrets, and the
+IRSA roles for External Secrets and ExternalDNS. External Secrets copies
+`PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD` into each namespace. The role
+trust uses the kOps issuer and the audience `amazonaws.com`.
+
+Prometheus scrapes the API. Promtail ships container logs to Loki. Grafana
+reads Prometheus, Loki, and Tempo. The API does not emit traces yet, so Tempo
+is installed and empty.
+
+| Layer | Where it lives |
 |---|---|
-| Frontend | React, Vite, NGINX |
-| API | Node.js, Express |
-| Data | PostgreSQL and Redis in the cluster |
-| Local environment | Docker Compose |
-| Cluster | kOps on EC2. The manifest is `kops/cluster.yaml` |
-| Delivery | GitHub Actions, Docker Hub, Helm |
-| Traffic | Route 53, ACM, the AWS Load Balancer Controller installed by kOps |
-| Secrets | AWS Secrets Manager and External Secrets, using the kOps service-account issuer |
-| Observability | Prometheus, Grafana, Loki, Promtail and Tempo |
+| Frontend | React and Vite, served by NGINX |
+| API | Express on Node.js |
+| Data | PostgreSQL and Redis, one volume per namespace |
+| Local | Docker Compose |
+| Chart | `helm/agribridge` with QA and production values |
+| Cluster | kOps on EC2, `kops/cluster.yaml` |
+| AWS around the cluster | `terraform/`: GitHub OIDC role, ACM, Secrets Manager, IRSA |
+| Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
+| Traffic | Route 53 and ACM to the ALB, then the web Service |
+| Secrets | Secrets Manager through External Secrets |
+| Observability | Prometheus, Grafana, Loki, Promtail, Tempo |
 
-QA and production are namespaces on the same cluster. They use the same image
-tag and separate secrets and database volumes. Build it in the order in
-[docs/SETUP.md](docs/SETUP.md).
+The repository does not include Argo CD, an NGINX ingress or a Network Load
+Balancer, Fluent Bit or CloudWatch logs, database backup jobs, composite
+actions, custom verification scripts, or separate Terraform roots. The
+environment name is QA, not staging. Build the cloud environment in the order
+in [docs/SETUP.md](docs/SETUP.md). The longer explanation is
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 

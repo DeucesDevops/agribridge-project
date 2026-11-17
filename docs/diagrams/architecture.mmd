@@ -1,0 +1,40 @@
+%% Render with:
+%% npx @mermaid-js/mermaid-cli -i docs/diagrams/architecture.mmd -o docs/images/agribridge-architecture.svg -c docs/diagrams/mermaid-config.json -b white
+flowchart TB
+  browser["Browser"] --> route53["Route 53"]
+  route53 --> alb["Application Load Balancer"]
+  acm["ACM certificate"] --- alb
+
+  subgraph cluster["kOps cluster on EC2"]
+    direction TB
+    alb --> web["Web · React, Vite, NGINX"]
+    web --> api["API · Express"]
+    api --> postgres[("PostgreSQL")]
+    api --> redis[("Redis")]
+    eso["External Secrets"] --> api
+    promtail["Promtail"] --> loki["Loki"]
+    api --> prometheus["Prometheus"]
+    prometheus --> grafana["Grafana"]
+    loki --> grafana
+    tempo["Tempo"] --> grafana
+  end
+
+  secrets["AWS Secrets Manager"] --> eso
+  hub[("Docker Hub<br/>macroni607/agribridge-api<br/>macroni607/agribridge-web")] --> web
+  hub --> api
+
+  subgraph actions["GitHub Actions · .github/workflows/cicd.yaml"]
+    direction LR
+    scans["Lint, test, Gitleaks,<br/>SonarQube, Trivy, Checkov, SBOM"]
+    stop["Pull requests and dev stop"]
+    push["Push on main"]
+    qa["Helm agribridge-qa"]
+    approval["Production approval"]
+    prod["Helm production"]
+    scans --> stop
+    scans --> push --> qa --> approval --> prod
+  end
+
+  push --> hub
+  qa --> web
+  prod --> web
