@@ -36,14 +36,6 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github.arn
 }
 
-output "api_repository_url" {
-  value = aws_ecr_repository.app["agribridge-api"].repository_url
-}
-
-output "web_repository_url" {
-  value = aws_ecr_repository.app["agribridge-web"].repository_url
-}
-
 output "qa_secret_name" {
   value = aws_secretsmanager_secret.app["qa"].name
 }

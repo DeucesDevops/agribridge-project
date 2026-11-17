@@ -7,7 +7,6 @@ cluster. kOps does that from `kops/cluster.yaml`.
 |---|---|
 | `buckets.tf` | kOps state bucket and the public OIDC discovery bucket |
 | `dns.tf` | ACM certificate and its Route 53 validation records |
-| `ecr.tf` | `agribridge-api` and `agribridge-web` repositories |
 | `secrets.tf` | QA and production Secrets Manager secrets |
 | `iam.tf` | GitHub Actions role, and the External Secrets and ExternalDNS roles |
 

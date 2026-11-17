@@ -54,26 +54,6 @@ resource "aws_iam_role_policy" "github" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["ecr:GetAuthorizationToken"]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:BatchGetImage",
-          "ecr:CompleteLayerUpload",
-          "ecr:DescribeImages",
-          "ecr:DescribeRepositories",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:InitiateLayerUpload",
-          "ecr:PutImage",
-          "ecr:UploadLayerPart",
-        ]
-        Resource = [for repository in aws_ecr_repository.app : repository.arn]
-      },
-      {
-        Effect   = "Allow"
         Action   = ["s3:GetBucketLocation", "s3:ListBucket"]
         Resource = [aws_s3_bucket.kops_state.arn]
       },

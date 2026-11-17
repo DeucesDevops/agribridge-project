@@ -66,8 +66,9 @@ terraform -chdir=terraform init -backend-config=backend.hcl
 terraform -chdir=terraform apply
 ```
 
-This creates the kOps state bucket, the discovery bucket, the ECR repositories,
-the QA and production secrets, the ACM certificate and the GitHub Actions role.
+This creates the kOps state bucket, the discovery bucket, the QA and production
+secrets, the ACM certificate and the GitHub Actions role. Container images are
+pushed to Docker Hub, not to a registry in this account.
 It does not create the External Secrets or ExternalDNS roles yet.
 
 Check the certificate:
@@ -164,21 +165,29 @@ aws secretsmanager get-secret-value --secret-id agribridge/qa \
 Use that `SEED_PASSWORD` with the demo emails after QA is deployed.
 Production does not load demo users.
 
-## Stage 7. Point GitHub at AWS
+## Stage 7. Point GitHub at Docker Hub and AWS
 
-Create the variables and the `qa` and `production` environments listed in
-[PIPELINE.md](PIPELINE.md). Add a required reviewer on `production` before the
-first deploy.
+Create the secrets, variables and the `qa` and `production` environments listed
+in [PIPELINE.md](PIPELINE.md). Add a required reviewer on `production` before
+the first deploy.
 
-| Variable | Terraform output |
+| Setting | Value |
 |---|---|
-| `AWS_ROLE_ARN` | `github_actions_role_arn` |
-| `ACM_CERTIFICATE_ARN` | `certificate_arn` |
-| `KOPS_STATE_STORE` | `kops_state_store` |
-| `KOPS_CLUSTER_NAME` | `cluster_name` |
+| Secret `DOCKERHUB_USERNAME` | Docker Hub user. The previous repositories belong to `macroni607` |
+| Secret `DOCKERHUB_TOKEN` | Docker Hub access token that can push those repositories |
+| Variable `AWS_ROLE_ARN` | Terraform output `github_actions_role_arn` |
+| Variable `ACM_CERTIFICATE_ARN` | Terraform output `certificate_arn` |
+| Variable `KOPS_STATE_STORE` | Terraform output `kops_state_store` |
+| Variable `KOPS_CLUSTER_NAME` | Terraform output `cluster_name` |
+
+`API_IMAGE_REPOSITORY` and `WEB_IMAGE_REPOSITORY` default to
+`docker.io/macroni607/agribridge-api` and `docker.io/macroni607/agribridge-web`.
+Set them when the Docker Hub user is different. Make the repositories public
+so the nodes can pull them.
 
 Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
-scans, builds, pushes both images, deploys QA, and then waits on production.
+scans, builds, pushes both images to Docker Hub, deploys QA, and then waits
+on production.
 
 QA is `https://qa.<zone>`. Production is `https://production.<zone>`.
 ExternalDNS creates those records from the Ingress. The first certificate
@@ -203,7 +212,7 @@ helm uninstall agribridge --namespace agribridge-production
 kops delete cluster --name "$CLUSTER_NAME" --yes
 ```
 
-`terraform destroy` removes the registry, secrets, certificate and IAM roles.
+`terraform destroy` removes the secrets, certificate and IAM roles.
 It will not delete the kOps state bucket or the discovery bucket, and it will
 not delete the cluster if you skipped `kops delete`. Remove those two buckets
 in the console after the cluster is gone. Delete leftover `qa` and

@@ -2,11 +2,12 @@
 #
 # Read this file from top to bottom:
 #   lint and test -> Gitleaks -> SonarQube -> Trivy source scan -> Checkov
-#   -> build images -> Trivy image scan -> SBOM -> push to ECR
+#   -> build images -> Trivy image scan -> SBOM -> push to Docker Hub
 #   -> deploy QA -> manual approval -> deploy production
 #
 # SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
-# Push and deploy are skipped until AWS_ROLE_ARN is set.
+# Push runs on main when the Docker Hub secrets are set.
+# Deploy also needs AWS_ROLE_ARN so the job can read the kOps state store.
 # Production waits on the GitHub environment named "production".
 
 name: CI/CD
@@ -31,6 +32,8 @@ env:
   KOPS_STATE_STORE: ${{ vars.KOPS_STATE_STORE || 's3://kops-state-607' }}
   KOPS_CLUSTER_NAME: ${{ vars.KOPS_CLUSTER_NAME || 'k8s.agribridge.deuces.dev' }}
   ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+  API_IMAGE_REPOSITORY: ${{ vars.API_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-api' }}
+  WEB_IMAGE_REPOSITORY: ${{ vars.WEB_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-web' }}
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -279,14 +282,11 @@ jobs:
           name: sbom
           path: "*-sbom.cdx.json"
           if-no-files-found: error
-      - name: Configure AWS credentials
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_ROLE_ARN != ''
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Push images to ECR
+      - name: Push images to Docker Hub
         id: publish
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           {
             echo "pushed=false"
@@ -297,29 +297,28 @@ jobs:
             echo "Images were scanned and were not pushed."
             exit 0
           fi
-          if [ -z "${AWS_ROLE_ARN}" ]; then
-            echo "AWS_ROLE_ARN is not set. Images were scanned. Push and deploy stay off until it is set."
+          if [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; then
+            echo "DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set. Images were scanned. Push and deploy stay off until both secrets are set."
             exit 0
           fi
-          account="$(aws sts get-caller-identity --query Account --output text)"
-          registry="${account}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          aws ecr get-login-password | docker login --username AWS --password-stdin "${registry}"
-          api="${registry}/agribridge-api"
-          web="${registry}/agribridge-web"
-          docker tag "agribridge-api:${IMAGE_TAG}" "${api}:${IMAGE_TAG}"
-          docker tag "agribridge-web:${IMAGE_TAG}" "${web}:${IMAGE_TAG}"
-          docker push "${api}:${IMAGE_TAG}"
-          docker push "${web}:${IMAGE_TAG}"
+          echo "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
+          docker tag "agribridge-api:${IMAGE_TAG}" "${API_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker tag "agribridge-web:${IMAGE_TAG}" "${WEB_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${API_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${WEB_IMAGE_REPOSITORY}:${IMAGE_TAG}"
           {
             echo "pushed=true"
-            echo "api_image=${api}"
-            echo "web_image=${web}"
+            echo "api_image=${API_IMAGE_REPOSITORY}"
+            echo "web_image=${WEB_IMAGE_REPOSITORY}"
           } >> "${GITHUB_OUTPUT}"
+          if [ -z "${AWS_ROLE_ARN}" ]; then
+            echo "Images are on Docker Hub. Set AWS_ROLE_ARN before the cluster deploy can run."
+          fi
 
   deploy-qa:
     name: Deploy QA
     needs: build
-    if: needs.build.outputs.pushed == 'true'
+    if: needs.build.outputs.pushed == 'true' && vars.AWS_ROLE_ARN != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -368,7 +367,7 @@ jobs:
   deploy-production:
     name: Deploy production
     needs: [build, deploy-qa]
-    if: needs.build.outputs.pushed == 'true'
+    if: needs.build.outputs.pushed == 'true' && vars.AWS_ROLE_ARN != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:

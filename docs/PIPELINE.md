@@ -10,7 +10,7 @@ Jobs run in this order. A failure stops everything after it.
 | SonarQube | Quality gate on `main`, only when the token and URL are set. Otherwise the job succeeds and says it was skipped |
 | Trivy filesystem scan | Fails on high or critical findings in `api/` and `frontend/` |
 | Checkov and configuration | `terraform fmt`, `terraform validate`, `helm lint`, then Checkov on Terraform, the rendered chart and both Dockerfiles |
-| Build, scan, SBOM and push | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to ECR on `main` |
+| Build, scan, SBOM and push | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to Docker Hub on `main` |
 | Deploy QA | `helm upgrade` into `agribridge-qa` |
 | Deploy production | Waits for the `production` environment, then installs the same tag into `agribridge-production` |
 
@@ -26,7 +26,11 @@ Create these under **Settings → Secrets and variables → Actions**.
 
 | Kind | Name | Required | Value |
 |---|---|---|---|
-| Variable | `AWS_ROLE_ARN` | For push and deploy | Terraform output `github_actions_role_arn` |
+| Secret | `DOCKERHUB_USERNAME` | To push | Docker Hub user that owns the image repositories |
+| Secret | `DOCKERHUB_TOKEN` | To push | Docker Hub access token with write access to those repositories |
+| Variable | `API_IMAGE_REPOSITORY` | No | `docker.io/macroni607/agribridge-api` when unset |
+| Variable | `WEB_IMAGE_REPOSITORY` | No | `docker.io/macroni607/agribridge-web` when unset |
+| Variable | `AWS_ROLE_ARN` | To deploy | Terraform output `github_actions_role_arn` |
 | Variable | `AWS_REGION` | No | `us-east-1` when unset |
 | Variable | `KOPS_STATE_STORE` | No | `s3://kops-state-607` when unset |
 | Variable | `KOPS_CLUSTER_NAME` | No | `k8s.agribridge.deuces.dev` when unset |
@@ -36,8 +40,12 @@ Create these under **Settings → Secrets and variables → Actions**.
 | Variable | `SONAR_HOST_URL` | No | HTTPS URL of SonarQube. The job skips when this is empty |
 | Secret | `SONAR_TOKEN` | No | SonarQube project token. The job skips when this is empty |
 
-There is no Docker Hub token and no static AWS access key. Actions assumes
-`AWS_ROLE_ARN` with GitHub's OIDC token.
+Actions assumes `AWS_ROLE_ARN` with GitHub's OIDC token when it deploys. Image
+push uses the Docker Hub token and does not need AWS. The default repositories
+are the ones this project published before: `docker.io/macroni607/agribridge-api`
+and `docker.io/macroni607/agribridge-web`. Set the two repository variables
+when the Docker Hub user is different. The repositories need to be public so
+the kOps nodes can pull them without an image pull secret.
 
 ## Environments
 

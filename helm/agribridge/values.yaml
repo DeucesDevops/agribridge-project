@@ -1,9 +1,9 @@
 api:
-  repository: agribridge-api
+  repository: docker.io/macroni607/agribridge-api
   tag: local
   replicas: 1
 web:
-  repository: agribridge-web
+  repository: docker.io/macroni607/agribridge-web
   tag: local
   replicas: 1
 # Public hostname. QA and production files set the real names.

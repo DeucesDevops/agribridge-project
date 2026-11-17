@@ -21,10 +21,10 @@ Prometheus scrapes the API `/metrics` endpoint. Promtail ships container logs
 to Loki. Tempo is installed so Grafana has a trace datasource. The application
 does not emit traces yet.
 
-Images are built by GitHub Actions and stored in ECR. The node role kOps creates
-can pull from ECR because `iam.allowContainerRegistry` is set. QA and production
+Images are built by GitHub Actions and stored on Docker Hub. QA and production
 deploys are `helm upgrade` from GitHub Actions. They are not a GitOps reconcile
-loop.
+loop. The chart pulls `docker.io/macroni607/agribridge-api` and
+`docker.io/macroni607/agribridge-web` unless the workflow overrides them.
 
 | Namespace | Host | Demo data |
 |---|---|---|

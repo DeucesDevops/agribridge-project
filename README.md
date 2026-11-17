@@ -25,7 +25,7 @@ flowchart LR
   web --> api[API]
   api --> pg[PostgreSQL]
   api --> redis[Redis]
-  gha[GitHub Actions] --> ecr[ECR]
+  gha[GitHub Actions] --> hub[Docker Hub]
   gha --> kops[kOps cluster]
   secrets[Secrets Manager] --> eso[External Secrets]
   eso --> api
@@ -42,7 +42,7 @@ metrics and version endpoints.
 | Data | PostgreSQL and Redis in the cluster |
 | Local environment | Docker Compose |
 | Cluster | kOps on EC2. The manifest is `kops/cluster.yaml` |
-| Delivery | GitHub Actions, Amazon ECR, Helm |
+| Delivery | GitHub Actions, Docker Hub, Helm |
 | Traffic | Route 53, ACM, the AWS Load Balancer Controller installed by kOps |
 | Secrets | AWS Secrets Manager and External Secrets, using the kOps service-account issuer |
 | Observability | Prometheus, Grafana, Loki, Promtail and Tempo |
@@ -107,14 +107,14 @@ SonarQube coverage helper tests. It needs Helm, Terraform and Python 3.
 ## Cloud delivery
 
 GitHub Actions lints and tests the app, scans for secrets and vulnerabilities,
-builds both images, writes a SBOM, and pushes to ECR. It then installs the Helm
-chart in QA. Production waits for a reviewer on the `production` environment
-and installs the same image tag.
+builds both images, writes a SBOM, and pushes them to Docker Hub. It then
+installs the Helm chart in QA. Production waits for a reviewer on the
+`production` environment and installs the same image tag.
 
 kOps creates the cluster, including the AWS Load Balancer Controller and the
 service-account issuer. Terraform creates the state bucket, the issuer bucket,
-the certificate, the registry and the IAM roles. The exact commands are in
-[docs/SETUP.md](docs/SETUP.md).
+the certificate and the IAM roles. Images are published to Docker Hub. The
+exact commands are in [docs/SETUP.md](docs/SETUP.md).
 
 | Guide | Contents |
 |---|---|
@@ -130,7 +130,7 @@ the certificate, the registry and the IAM roles. The exact commands are in
 | `frontend/`, `api/` | Application source and tests |
 | `.github/workflows/cicd.yaml` | The only delivery workflow |
 | `kops/` | kOps cluster manifest |
-| `terraform/` | Route 53 records, ACM, ECR, secrets and IAM |
+| `terraform/` | Route 53 records, ACM, secrets and IAM |
 | `helm/agribridge/` | Application chart |
 | `platform/` | Storage class and observability Helm values |
 | `sonarqube/` | Optional local SonarQube |
