@@ -1,6 +1,9 @@
+# hostname must match terraform output production_hostname.
+hostname: production.agribridge.deuces.dev
+secretName: agribridge/production
 api:
-  replicas: 3
+  replicas: 2
 web:
   replicas: 2
 config:
-  SEED_DEMO_DATA: 'false'
+  SEED_DEMO_DATA: "false"

@@ -1,5 +1,0 @@
-api:
-  replicas: 2
-web:
-  replicas: 2
-seedDemoData: true

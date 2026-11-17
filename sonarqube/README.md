@@ -14,14 +14,13 @@ runtime, and this folder does not provision or contact AWS.
 | `sonar-project.properties` | One `agribridge` project, analysis scope, coverage import and quality-gate enforcement |
 | `prepare-coverage.py` | Validates and combines component LCOV reports using repository-relative source paths |
 | `test_coverage.py` | Checks path mapping, report combination and missing/invalid coverage failures |
-| `../.github/workflows/delivery.yaml` | Dedicated optional main-branch `sonarqube` job, before container publication |
+| `../.github/workflows/cicd.yaml` | Optional SonarQube job. It runs on main only when both settings below are present |
 
 The analysis includes API JavaScript, frontend JavaScript/JSX/CSS, authored
 Terraform, both application Dockerfiles and the application Compose definition,
 as supported by the installed analyzers. Tests are classified separately.
-Generated kOps code, Terraform caches/state/plans and dependencies are excluded.
-Helm template rendering and Kubernetes correctness remain covered by the existing
-CI checks; this is not a replacement for those checks.
+Terraform caches, state and plans are excluded. Helm rendering stays in the
+CI configuration job.
 
 ## Start locally without AWS
 
@@ -73,53 +72,24 @@ These commands operate only on the separate `agribridge-sonarqube` Compose proje
 `make stop` still stops the application stack. Do not add `--volumes` to the
 SonarQube shutdown command unless you intend to erase its database and history.
 
-## Enable GitHub Actions later
+## Enable GitHub Actions
 
-The delivery integration is **disabled unless `SONAR_ENABLED` is exactly `true`**.
-A disabled integration is reported in the workflow summary; it is not evidence
-of a passing SonarQube scan. Repository settings have not been changed by adding
-these files.
+The SonarQube job is skipped, and the workflow stays green, until both of these
+are set. A skip is not a passing scan.
 
-The existing jobs run on GitHub-hosted runners. They cannot reach SonarQube on your
-Mac through `localhost:9000`; localhost there means the runner itself. Use a
-server reachable by that runner over HTTPS, or adapt the analysis to a trusted
-self-hosted runner with network access. You can continue using local scans
-without enabling CI or creating any cloud infrastructure. Do not expose the local
-development server directly to the internet for this purpose.
-
-In **GitHub repository → Settings → Secrets and variables → Actions**, configure:
+GitHub-hosted runners cannot reach SonarQube on your laptop through
+`localhost:9000`. Use an HTTPS server that those runners can reach. Do not
+expose the local development server to the internet for this.
 
 | Type | Name | Value |
 |------|------|-------|
-| Variable | `SONAR_HOST_URL` | HTTPS URL reachable from the GitHub-hosted runner |
-| Secret | `SONAR_TOKEN` | Project analysis token for `agribridge` on that server |
-| Variable | `SONAR_ENABLED` | `true` to enforce the gate in the delivery workflow; leave unset while offline |
+| Variable | `SONAR_HOST_URL` | HTTPS URL of the SonarQube server |
+| Secret | `SONAR_TOKEN` | Project analysis token for `agribridge` |
 
-Create the same `agribridge` project and choose its quality gate on that server
-first. Tokens belong to the server that issued them. For a custom certificate
-authority, configure `SONAR_ROOT_CERT` on the scan-action steps as described in
-the official action documentation; do not disable TLS verification.
-
-To verify CI scanning while AWS remains offline, dispatch **Actions → AgriBridge
-DevSecOps Pipeline → Run workflow**, choosing `main` and enabling
-`analysis_only`. This requires the URL and token even if `SONAR_ENABLED` is unset.
-It runs the checks and SonarQube gate, then skips image publication and all
-release jobs. The previous separate analysis workflow has been consolidated into
-this mode of `delivery.yaml`.
-
-When enabled, the delivery sequence is:
-
-1. Lint, Trivy dependency scanning, application tests and coverage.
-2. SonarQube downloads both components' coverage artifacts and enforces its gate.
-3. Source scans and platform validation must all pass; the frontend build is enforced inside Docker.
-4. Docker build, runtime checks, Trivy scans and SBOMs; publish only on main.
-5. Argo CD staging verification and production promotion when `DEPLOY_ENABLED=true`.
-
-The gate has no `continue-on-error` override. Missing settings or a failed scan
-fail `sonarqube` and the aggregate `checks`, preventing image publication. Community Build
-supports main-branch analysis only, so pull requests keep the existing CI checks
-and do not receive a SonarQube scan. Feature-branch and pull-request analysis
-require a supported edition/service and a corresponding workflow change.
+Create the `agribridge` project on that server first and keep the **Sonar way**
+quality gate. The job runs on `main` only. Pull requests still run the other
+checks. Community Build does not analyze pull-request branches. A failed gate
+fails the workflow and blocks the image build.
 
 ## Coverage and quality-gate expectations
 
