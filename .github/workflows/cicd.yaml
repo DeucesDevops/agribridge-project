@@ -1,0 +1,415 @@
+# AgriBridge CI/CD
+#
+# Read this file from top to bottom:
+#   lint and test -> Gitleaks -> SonarQube -> Trivy source scan -> Checkov
+#   -> build images -> Trivy image scan -> SBOM -> push to ECR
+#   -> deploy QA -> manual approval -> deploy production
+#
+# SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
+# Push and deploy are skipped until AWS_ROLE_ARN is set.
+# Production waits on the GitHub environment named "production".
+
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+  KOPS_STATE_STORE: ${{ vars.KOPS_STATE_STORE || 's3://kops-state-607' }}
+  KOPS_CLUSTER_NAME: ${{ vars.KOPS_CLUSTER_NAME || 'k8s.agribridge.deuces.dev' }}
+  ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  lint-and-test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.11-bookworm
+        env:
+          POSTGRES_USER: agribridge
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: agribridge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agribridge"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: agribridge
+      PGPASSWORD: integration-only
+      PGDATABASE: agribridge_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            frontend/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci --prefix api
+          npm ci --prefix frontend
+      - name: Lint
+        run: |
+          npm run lint --prefix api -- --max-warnings=0
+          npm run lint --prefix frontend -- --max-warnings=0
+      - name: Unit tests and coverage
+        run: |
+          npm run test:coverage --prefix api
+          npm run test:coverage --prefix frontend
+      - name: API integration tests
+        run: npm run test:integration --prefix api
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-api
+          path: api/coverage/lcov.info
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-frontend
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
+
+  gitleaks:
+    name: Gitleaks
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan Git history for secrets
+        run: |
+          curl -fsSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz
+          ./gitleaks detect --source . --redact --verbose
+
+  sonarqube:
+    name: SonarQube
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Skip unless SonarQube is configured on main
+        id: gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: |
+          if [ -z "${SONAR_TOKEN}" ] || [ -z "${SONAR_HOST_URL}" ]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "SonarQube skipped. Set the SONAR_TOKEN secret and the SONAR_HOST_URL variable to enable it."
+            exit 0
+          fi
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "SonarQube is configured. Analysis runs on main so the Community Build quality gate stays on one branch."
+            exit 0
+          fi
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: coverage-api
+          path: api/coverage
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: coverage-frontend
+          path: frontend/coverage
+      - name: Combine coverage
+        if: steps.gate.outputs.enabled == 'true'
+        run: python3 sonarqube/prepare-coverage.py
+      - name: Analyze and wait for the quality gate
+        if: steps.gate.outputs.enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: -Dproject.settings=sonarqube/sonar-project.properties
+
+  trivy-fs:
+    name: Trivy filesystem scan
+    needs: sonarqube
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan the API source
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: api
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+      - name: Scan the web source
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+  checkov:
+    name: Checkov and configuration
+    needs: trivy-fs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.6
+          terraform_wrapper: false
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Terraform format, init and validate
+        run: |
+          terraform -chdir=terraform fmt -check -recursive
+          terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=terraform validate -no-color
+      - name: Helm lint and render
+        run: |
+          helm lint helm/agribridge
+          helm template agribridge helm/agribridge --namespace agribridge-qa -f helm/agribridge/values-qa.yaml > qa.yaml
+          helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml > production.yaml
+      - name: Install Checkov
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/checkov"
+          "${RUNNER_TEMP}/checkov/bin/pip" install 'checkov==3.2.449'
+          echo "${RUNNER_TEMP}/checkov/bin" >> "${GITHUB_PATH}"
+      - name: Scan Terraform, the chart and the Dockerfiles
+        run: |
+          checkov --directory terraform --framework terraform --config-file .github/checkov.yaml --download-external-modules false
+          checkov --file qa.yaml --file production.yaml --framework kubernetes --config-file .github/checkov.yaml
+          checkov --directory api --framework dockerfile --config-file .github/checkov.yaml
+          checkov --directory frontend --framework dockerfile --config-file .github/checkov.yaml
+
+  build:
+    name: Build, scan, SBOM and push
+    needs: checkov
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      pushed: ${{ steps.publish.outputs.pushed }}
+      api_image: ${{ steps.publish.outputs.api_image }}
+      web_image: ${{ steps.publish.outputs.web_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the API and web images
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          built="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for name in api web; do
+            context="api"
+            if [ "${name}" = "web" ]; then
+              context="frontend"
+            fi
+            docker build \
+              --build-arg "APP_VERSION=${IMAGE_TAG}" \
+              --build-arg "GIT_SHA=${IMAGE_TAG}" \
+              --build-arg "BUILD_DATE=${built}" \
+              --build-arg "IMAGE_TAG=${IMAGE_TAG}" \
+              -t "agribridge-${name}:${IMAGE_TAG}" \
+              "${context}"
+          done
+      - name: Trivy scan the API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-api:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: Trivy scan the web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-web:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: SBOM for the API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-api:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: api-sbom.cdx.json
+          exit-code: "0"
+      - name: SBOM for the web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-web:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: web-sbom.cdx.json
+          exit-code: "0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: "*-sbom.cdx.json"
+          if-no-files-found: error
+      - name: Configure AWS credentials
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.AWS_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Push images to ECR
+        id: publish
+        run: |
+          {
+            echo "pushed=false"
+            echo "api_image="
+            echo "web_image="
+          } >> "${GITHUB_OUTPUT}"
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "Images were scanned and were not pushed."
+            exit 0
+          fi
+          if [ -z "${AWS_ROLE_ARN}" ]; then
+            echo "AWS_ROLE_ARN is not set. Images were scanned. Push and deploy stay off until it is set."
+            exit 0
+          fi
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${registry}"
+          api="${registry}/agribridge-api"
+          web="${registry}/agribridge-web"
+          docker tag "agribridge-api:${IMAGE_TAG}" "${api}:${IMAGE_TAG}"
+          docker tag "agribridge-web:${IMAGE_TAG}" "${web}:${IMAGE_TAG}"
+          docker push "${api}:${IMAGE_TAG}"
+          docker push "${web}:${IMAGE_TAG}"
+          {
+            echo "pushed=true"
+            echo "api_image=${api}"
+            echo "web_image=${web}"
+          } >> "${GITHUB_OUTPUT}"
+
+  deploy-qa:
+    name: Deploy QA
+    needs: build
+    if: needs.build.outputs.pushed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: qa
+      url: ${{ vars.QA_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Install kubectl and kOps
+        run: |
+          curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
+          curl -fsSL -o kops "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          chmod +x kubectl kops
+          sudo mv kubectl kops /usr/local/bin/
+      - name: Deploy the QA release
+        run: |
+          if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
+            echo "Set ACM_CERTIFICATE_ARN to the terraform output certificate_arn."
+            exit 1
+          fi
+          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
+          chmod 600 "${RUNNER_TEMP}/kubeconfig"
+          export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
+          helm upgrade --install agribridge helm/agribridge \
+            --namespace agribridge-qa \
+            --create-namespace \
+            --values helm/agribridge/values.yaml \
+            --values helm/agribridge/values-qa.yaml \
+            --set-string "api.repository=${API_IMAGE}" \
+            --set-string "api.tag=${IMAGE_TAG}" \
+            --set-string "web.repository=${WEB_IMAGE}" \
+            --set-string "web.tag=${IMAGE_TAG}" \
+            --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
+            --wait \
+            --timeout 10m
+        env:
+          API_IMAGE: ${{ needs.build.outputs.api_image }}
+          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+
+  deploy-production:
+    name: Deploy production
+    needs: [build, deploy-qa]
+    if: needs.build.outputs.pushed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Install kubectl and kOps
+        run: |
+          curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
+          curl -fsSL -o kops "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          chmod +x kubectl kops
+          sudo mv kubectl kops /usr/local/bin/
+      - name: Deploy the production release
+        run: |
+          if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
+            echo "Set ACM_CERTIFICATE_ARN to the terraform output certificate_arn."
+            exit 1
+          fi
+          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
+          chmod 600 "${RUNNER_TEMP}/kubeconfig"
+          export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
+          helm upgrade --install agribridge helm/agribridge \
+            --namespace agribridge-production \
+            --create-namespace \
+            --values helm/agribridge/values.yaml \
+            --values helm/agribridge/values-production.yaml \
+            --set-string "api.repository=${API_IMAGE}" \
+            --set-string "api.tag=${IMAGE_TAG}" \
+            --set-string "web.repository=${WEB_IMAGE}" \
+            --set-string "web.tag=${IMAGE_TAG}" \
+            --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
+            --wait \
+            --timeout 10m
+        env:
+          API_IMAGE: ${{ needs.build.outputs.api_image }}
+          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
