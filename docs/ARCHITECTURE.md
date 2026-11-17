@@ -1,15 +1,6 @@
 # Architecture
 
-![AgriBridge architecture](images/agribridge-architecture.svg)
-
-The diagram is rendered from [`diagrams/architecture.mmd`](diagrams/architecture.mmd).
-Regenerate it with Mermaid CLI:
-
-```sh
-npx @mermaid-js/mermaid-cli -i docs/diagrams/architecture.mmd \
-  -o docs/images/agribridge-architecture.svg \
-  -c docs/diagrams/mermaid-config.json -b white
-```
+![AgriBridge architecture](images/agribridge-architecture.jpg)
 
 ## Application
 
@@ -30,21 +21,6 @@ Both releases use one image tag. Each namespace has its own database volume
 and its own Secrets Manager secret.
 
 ## Pipeline
-
-```mermaid
-flowchart LR
-  lint["Lint and test"] --> leaks["Gitleaks"]
-  leaks --> sonar["SonarQube optional"]
-  sonar --> fs["Trivy filesystem"]
-  fs --> iac["Checkov, Terraform validate, Helm lint"]
-  iac --> build["Build images"]
-  build --> image["Trivy image and CycloneDX SBOM"]
-  image --> stop["Pull requests and dev stop"]
-  image --> push["Docker Hub on main"]
-  push --> qa["Helm agribridge-qa"]
-  qa --> approve["Production approval"]
-  approve --> prod["Helm production"]
-```
 
 The file is [`.github/workflows/cicd.yaml`](../.github/workflows/cicd.yaml).
 SonarQube runs on `main` when `SONAR_TOKEN` and `SONAR_HOST_URL` are set, and

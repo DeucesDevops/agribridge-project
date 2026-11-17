@@ -17,9 +17,8 @@ on AWS, with a short GitHub Actions pipeline that deploys QA and then production
 
 ## Architecture
 
-![AgriBridge architecture](docs/images/agribridge-architecture.svg)
+![AgriBridge architecture](docs/images/agribridge-architecture.jpg)
 
-The picture is generated from [`docs/diagrams/architecture.mmd`](docs/diagrams/architecture.mmd).
 A request reaches the API like this. A browser opens the QA or production
 hostname. Route 53 sends it to one Application Load Balancer. TLS is the ACM
 certificate. The load balancer sends traffic to the web pod, which serves the
@@ -33,22 +32,7 @@ they run from one Helm chart, `helm/agribridge`, with `values-qa.yaml` and
 `agribridge-production`. They share an image tag and keep separate database
 volumes and secrets.
 
-```mermaid
-flowchart LR
-  lint["Lint and test"] --> leaks["Gitleaks"]
-  leaks --> sonar["SonarQube optional"]
-  sonar --> fs["Trivy filesystem"]
-  fs --> iac["Checkov, Terraform validate, Helm lint"]
-  iac --> build["Build images"]
-  build --> image["Trivy image and CycloneDX SBOM"]
-  image --> stop["Pull requests and dev stop"]
-  image --> push["Docker Hub on main"]
-  push --> qa["Helm agribridge-qa"]
-  qa --> approve["Production approval"]
-  approve --> prod["Helm production"]
-```
-
-That sequence is the only workflow, [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
+The picture is the delivery path. The workflow file is [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
 SonarQube runs on `main` only when `SONAR_TOKEN` and `SONAR_HOST_URL` are set.
 On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
 `docker.io/macroni607/agribridge-web`. QA installs immediately. Production
