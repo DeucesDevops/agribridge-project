@@ -1,32 +1,75 @@
 # Architecture
 
-A browser opens `https://qa.<zone>` or `https://production.<zone>`. Route 53
-sends that name to one Application Load Balancer. The load balancer is created
-by the AWS Load Balancer Controller, which kOps installs, from the Ingress in
-the application chart. TLS uses the ACM certificate Terraform requests.
+![AgriBridge architecture](images/agribridge-architecture.jpg)
 
-The web pod serves the React files and proxies `/api` to the API Service in the
-same namespace. The API reads and writes PostgreSQL and uses Redis as a cache.
-If Redis is down, the API keeps serving from PostgreSQL and reports that on
-`/readyz`.
+## Application
 
-Each namespace has its own database volume and its own Secrets Manager secret.
-External Secrets copies `PGPASSWORD`, `JWT_SECRET` and `SEED_PASSWORD` into the
-namespace. The External Secrets pod assumes an IAM role. The trust policy uses
-the OIDC issuer kOps publishes to the discovery bucket, with audience
-`amazonaws.com`. That is the kOps pod-identity webhook, not an EKS pod-identity
-association.
+The web app is React and Vite, served by NGINX. It proxies `/api` to the
+Express API. PostgreSQL stores marketplace data. Redis caches responses. If
+Redis is unreachable, the API reads PostgreSQL and reports the degradation on
+`/readyz`. The API also exposes `/healthz`, `/metrics`, and `/version`.
 
-Prometheus scrapes the API `/metrics` endpoint. Promtail ships container logs
-to Loki. Tempo is installed so Grafana has a trace datasource. The application
-does not emit traces yet.
+Docker Compose runs those four processes for local development. The same
+processes run in Kubernetes from one chart, `helm/agribridge`.
 
-Images are built by GitHub Actions and stored on Docker Hub. QA and production
-deploys are `helm upgrade` from GitHub Actions. They are not a GitOps reconcile
-loop. The chart pulls `docker.io/macroni607/agribridge-api` and
-`docker.io/macroni607/agribridge-web` unless the workflow overrides them.
+| File | Namespace | Host | Demo data |
+|---|---|---|---|
+| `values-qa.yaml` | `agribridge-qa` | `qa.<zone>` | Loaded on startup |
+| `values-production.yaml` | `agribridge-production` | `production.<zone>` | Not loaded |
 
-| Namespace | Host | Demo data |
-|---|---|---|
-| `agribridge-qa` | `qa.<zone>` | Loaded on startup |
-| `agribridge-production` | `production.<zone>` | Not loaded |
+Both releases use one image tag. Each namespace has its own database volume
+and its own Secrets Manager secret.
+
+## Pipeline
+
+The file is [`.github/workflows/cicd.yaml`](../.github/workflows/cicd.yaml).
+SonarQube runs on `main` when `SONAR_TOKEN` and `SONAR_HOST_URL` are set, and
+the job succeeds with a skip message otherwise. A push to `main` publishes
+`docker.io/macroni607/agribridge-api` and
+`docker.io/macroni607/agribridge-web`, then runs `helm upgrade` in
+`agribridge-qa`. The `production` GitHub environment must approve the same tag
+before the production install. Pull requests and `dev` finish after the image
+scan and SBOM.
+
+## Cluster and AWS
+
+kOps creates the cluster from [`kops/cluster.yaml`](../kops/cluster.yaml):
+
+- VPC and EC2 nodes
+- EBS CSI driver
+- cert-manager
+- AWS Load Balancer Controller
+- service-account OIDC issuer, published to the discovery bucket
+
+The Terraform root in `terraform/` does not create the cluster. It creates:
+
+- the GitHub Actions OIDC role, used to read the kOps state store and deploy
+- the ACM certificate for the zone and `*.zone`
+- Secrets Manager secrets `agribridge/qa` and `agribridge/production`
+- IRSA roles for External Secrets and ExternalDNS, after kOps has registered the issuer
+
+## Traffic and secrets
+
+Route 53 names `qa.<zone>` and `production.<zone>` point at one ALB. The
+Ingress in the Helm chart asks the load balancer controller for that ALB and
+attaches the ACM certificate. ExternalDNS creates the records from the Ingress
+host.
+
+External Secrets reads Secrets Manager with an IAM role. The trust policy uses
+the kOps issuer and the audience `amazonaws.com`. The synced secret supplies
+`PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD`.
+
+## Observability
+
+Prometheus scrapes `/metrics` through a ServiceMonitor. Promtail ships
+container logs to Loki. Grafana is configured with Prometheus, Loki, and Tempo
+datasources. The API does not export traces, so Tempo has no application spans
+until a tracer is added. Grafana stays inside the cluster and is opened with
+`kubectl port-forward`.
+
+## What this repository does not contain
+
+Argo CD, an NGINX ingress controller, a Network Load Balancer, Fluent Bit,
+CloudWatch Logs, application backup jobs, composite GitHub Actions, custom
+verification scripts, and extra Terraform roots are not part of this design.
+The environment name is QA.
