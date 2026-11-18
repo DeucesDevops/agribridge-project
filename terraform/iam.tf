@@ -66,6 +66,12 @@ resource "aws_iam_role_policy" "github" {
         Action   = ["s3:GetObject"]
         Resource = ["${aws_s3_bucket.kops_state.arn}/*"]
       },
+      {
+        # kops export kubeconfig looks up regions and zones before reading the state store.
+        Effect   = "Allow"
+        Action   = ["ec2:DescribeRegions", "ec2:DescribeAvailabilityZones"]
+        Resource = ["*"]
+      },
     ]
   })
 }
