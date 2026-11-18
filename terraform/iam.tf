@@ -35,6 +35,10 @@ data "aws_iam_policy_document" "github_assume" {
         "repo:${var.github_repository}:ref:refs/heads/main",
         "repo:${var.github_repository}:environment:qa",
         "repo:${var.github_repository}:environment:production",
+        # GitHub immutable subject format (repo uses use_immutable_subject).
+        "${var.github_immutable_subject_prefix}:ref:refs/heads/main",
+        "${var.github_immutable_subject_prefix}:environment:qa",
+        "${var.github_immutable_subject_prefix}:environment:production",
       ]
     }
   }
