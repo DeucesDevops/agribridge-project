@@ -361,8 +361,8 @@ jobs:
             --wait \
             --timeout 10m
         env:
-          API_IMAGE: ${{ needs.build.outputs.api_image }}
-          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
+          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}
 
   deploy-production:
     name: Deploy production
@@ -410,5 +410,5 @@ jobs:
             --wait \
             --timeout 10m
         env:
-          API_IMAGE: ${{ needs.build.outputs.api_image }}
-          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
+          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}
