@@ -62,3 +62,9 @@ variable "attach_irsa" {
   type        = bool
   default     = false
 }
+
+variable "github_immutable_subject_prefix" {
+  description = "OIDC sub prefix when the repo uses GitHub immutable subjects (repo:OWNER@OWNER_ID/NAME@REPO_ID). See GET /repos/OWNER/NAME/actions/oidc/customization/sub."
+  type        = string
+  default     = "repo:DeucesDevops@132962088/agribridge-project@1409286862"
+}

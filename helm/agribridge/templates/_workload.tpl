@@ -117,6 +117,8 @@ metadata:
   labels:
     app: {{ .Release.Name }}-{{ $component }}
 spec:
+  # Calico pod IPs are not routable from the VPC, so the ALB targets the web NodePort on each node.
+  type: {{ if eq $component "web" }}NodePort{{ else }}ClusterIP{{ end }}
   selector:
     app: {{ .Release.Name }}-{{ $component }}
   ports:

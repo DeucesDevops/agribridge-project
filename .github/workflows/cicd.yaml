@@ -335,10 +335,10 @@ jobs:
           version: v3.19.0
       - name: Install kubectl and kOps
         run: |
-          curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          curl -fsSL -o kops "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
-          chmod +x kubectl kops
-          sudo mv kubectl kops /usr/local/bin/
+          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
+          curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
+          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
       - name: Deploy the QA release
         run: |
           if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
@@ -361,8 +361,8 @@ jobs:
             --wait \
             --timeout 10m
         env:
-          API_IMAGE: ${{ needs.build.outputs.api_image }}
-          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
+          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}
 
   deploy-production:
     name: Deploy production
@@ -384,10 +384,10 @@ jobs:
           version: v3.19.0
       - name: Install kubectl and kOps
         run: |
-          curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          curl -fsSL -o kops "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
-          chmod +x kubectl kops
-          sudo mv kubectl kops /usr/local/bin/
+          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
+          curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
+          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
       - name: Deploy the production release
         run: |
           if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
@@ -410,5 +410,5 @@ jobs:
             --wait \
             --timeout 10m
         env:
-          API_IMAGE: ${{ needs.build.outputs.api_image }}
-          WEB_IMAGE: ${{ needs.build.outputs.web_image }}
+          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
+          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}

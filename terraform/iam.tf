@@ -35,6 +35,10 @@ data "aws_iam_policy_document" "github_assume" {
         "repo:${var.github_repository}:ref:refs/heads/main",
         "repo:${var.github_repository}:environment:qa",
         "repo:${var.github_repository}:environment:production",
+        # GitHub immutable subject format (repo uses use_immutable_subject).
+        "${var.github_immutable_subject_prefix}:ref:refs/heads/main",
+        "${var.github_immutable_subject_prefix}:environment:qa",
+        "${var.github_immutable_subject_prefix}:environment:production",
       ]
     }
   }
@@ -61,6 +65,12 @@ resource "aws_iam_role_policy" "github" {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
         Resource = ["${aws_s3_bucket.kops_state.arn}/*"]
+      },
+      {
+        # kops export kubeconfig looks up regions and zones before reading the state store.
+        Effect   = "Allow"
+        Action   = ["ec2:DescribeRegions", "ec2:DescribeAvailabilityZones"]
+        Resource = ["*"]
       },
     ]
   })
