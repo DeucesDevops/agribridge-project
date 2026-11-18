@@ -27,6 +27,7 @@ resource "aws_route53_record" "validation" {
   type    = each.value.type
   records = [each.value.record]
   ttl     = 60
+  allow_overwrite = true
 }
 
 resource "aws_acm_certificate_validation" "app" {

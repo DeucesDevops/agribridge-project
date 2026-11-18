@@ -63,6 +63,8 @@ the same, and the discovery bucket name cannot contain dots.
 
 ```sh
 terraform -chdir=terraform init -backend-config=backend.hcl
+# The validation records depend on the certificate, so create it first.
+terraform -chdir=terraform apply -target=aws_acm_certificate.app
 terraform -chdir=terraform apply
 ```
 
