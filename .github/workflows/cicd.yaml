@@ -3,7 +3,7 @@
 # Read this file from top to bottom:
 #   lint and test -> Gitleaks -> SonarQube -> Trivy source scan -> Checkov
 #   -> build images -> Trivy image scan -> SBOM -> push to Docker Hub
-#   -> deploy QA -> manual approval -> deploy production
+#   -> manual approval -> deploy production
 #
 # SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
 # Push runs on main when the Docker Hub secrets are set.
@@ -34,7 +34,6 @@ env:
   ZONE_NAME: ${{ vars.ZONE_NAME || 'agribridge.deuces.dev' }}
   ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
   BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
-  BACKUP_ROLE_QA: ${{ vars.BACKUP_ROLE_QA }}
   BACKUP_ROLE_PRODUCTION: ${{ vars.BACKUP_ROLE_PRODUCTION }}
   API_IMAGE_REPOSITORY: ${{ vars.API_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-api' }}
   WEB_IMAGE_REPOSITORY: ${{ vars.WEB_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-web' }}
@@ -233,7 +232,6 @@ jobs:
       - name: Helm lint and render
         run: |
           helm lint helm/agribridge
-          helm template agribridge helm/agribridge --namespace agribridge-qa -f helm/agribridge/values-qa.yaml > qa.yaml
           helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml > production.yaml
       - name: Install Checkov
         run: |
@@ -243,7 +241,7 @@ jobs:
       - name: Scan Terraform, the chart and the Dockerfiles
         run: |
           checkov --directory terraform --framework terraform --config-file .github/checkov.yaml --download-external-modules false
-          checkov --file qa.yaml --file production.yaml --framework kubernetes --config-file .github/checkov.yaml
+          checkov --file production.yaml --framework kubernetes --config-file .github/checkov.yaml
           checkov --directory api --framework dockerfile --config-file .github/checkov.yaml
           checkov --directory frontend --framework dockerfile --config-file .github/checkov.yaml
 
@@ -346,62 +344,9 @@ jobs:
             echo "Images are on Docker Hub. Deploy waits until Terraform has published AWS_ROLE_ARN."
           fi
 
-  deploy-qa:
-    name: Deploy QA
-    needs: build
-    if: needs.build.outputs.pushed == 'true' && vars.AWS_ROLE_ARN != ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: qa
-      url: ${{ vars.QA_URL }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.19.0
-      - name: Install kubectl and kOps
-        run: |
-          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
-          curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
-          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
-      - name: Deploy the QA release
-        run: |
-          if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
-            echo "ACM_CERTIFICATE_ARN is empty. Terraform publishes it. Run the apply in docs/SETUP.md."
-            exit 1
-          fi
-          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
-          chmod 600 "${RUNNER_TEMP}/kubeconfig"
-          export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
-          helm upgrade --install agribridge helm/agribridge \
-            --namespace agribridge-qa \
-            --create-namespace \
-            --values helm/agribridge/values.yaml \
-            --values helm/agribridge/values-qa.yaml \
-            --set-string "api.repository=${API_IMAGE}" \
-            --set-string "api.tag=${IMAGE_TAG}" \
-            --set-string "web.repository=${WEB_IMAGE}" \
-            --set-string "web.tag=${IMAGE_TAG}" \
-            --set-string "hostname=qa.${ZONE_NAME}" \
-            --set-string "region=${AWS_REGION}" \
-            --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
-            --set-string "backup.bucket=${BACKUP_BUCKET}" \
-            --set-string "backup.roleArn=${BACKUP_ROLE_QA}" \
-            --wait \
-            --timeout 10m
-        env:
-          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
-          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}
-
   deploy-production:
     name: Deploy production
-    needs: [build, deploy-qa]
+    needs: build
     if: needs.build.outputs.pushed == 'true' && vars.AWS_ROLE_ARN != ''
     runs-on: ubuntu-latest
     timeout-minutes: 20

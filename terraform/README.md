@@ -9,9 +9,9 @@ writes into `kops/` from `kops/cluster.yaml`.
 | `cluster.tf` | The module call for that output |
 | `dns.tf` | Public Route 53 zone, ACM certificate, validation records |
 | `buckets.tf` | kOps state bucket, OIDC discovery bucket, private backup bucket |
-| `secrets.tf` | QA, production and Grafana secrets |
+| `secrets.tf` | Production and Grafana secrets |
 | `iam.tf` | GitHub Actions role, and IRSA for External Secrets, ExternalDNS and backups |
-| `github.tf` | Actions variables and the `qa` and `production` environments |
+| `github.tf` | Actions variables and the `production` environment |
 | `platform.tf` | Helm releases, on the second apply |
 | `modules/platform` | External Secrets, ExternalDNS, Loki, Tempo, Prometheus, Grafana, Promtail |
 

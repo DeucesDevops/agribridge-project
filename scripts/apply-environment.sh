@@ -90,13 +90,11 @@ import_github() {
   fi
 }
 
-import_github 'github_repository_environment.qa[0]' \
-  "environments/qa" "${REPO_NAME}:qa"
 import_github 'github_repository_environment.production[0]' \
   "environments/production" "${REPO_NAME}:production"
 
 for name in AWS_ROLE_ARN AWS_REGION ACM_CERTIFICATE_ARN KOPS_CLUSTER_NAME KOPS_STATE_STORE \
-  ZONE_NAME QA_URL PRODUCTION_URL GRAFANA_URL BACKUP_BUCKET BACKUP_ROLE_PRODUCTION BACKUP_ROLE_QA
+  ZONE_NAME PRODUCTION_URL GRAFANA_URL BACKUP_BUCKET BACKUP_ROLE_PRODUCTION
 do
   import_github "github_actions_variable.this[\"${name}\"]" \
     "actions/variables/${name}" "${REPO_NAME}:${name}"

@@ -6,12 +6,12 @@ web:
   repository: docker.io/macroni607/agribridge-web
   tag: local
   replicas: 1
-# Public hostname. QA and production files set the real names.
-hostname: qa.agribridge.deuces.dev
+# Public hostname. values-production.yaml sets the live name.
+hostname: production.agribridge.deuces.dev
 # ACM certificate ARN from `terraform output certificate_arn`. Empty keeps the ingress on HTTP.
 certificateArn: ""
 region: us-east-1
-secretName: agribridge/qa
+secretName: agribridge/production
 monitoring:
   enabled: true
 config:
@@ -42,7 +42,7 @@ postgres:
   image: postgres:16.11-bookworm
   storageClass: gp3
   size: 20Gi
-# Production values turn the dump on. QA leaves it off.
+# values-production.yaml turns the dump on.
 # CI sets bucket and roleArn from the GitHub variables Terraform publishes.
 backup:
   enabled: false

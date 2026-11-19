@@ -33,10 +33,8 @@ data "aws_iam_policy_document" "github_assume" {
       variable = "token.actions.githubusercontent.com:sub"
       values = [
         "repo:${var.github_repository}:ref:refs/heads/main",
-        "repo:${var.github_repository}:environment:qa",
         "repo:${var.github_repository}:environment:production",
         "${var.github_immutable_subject_prefix}:ref:refs/heads/main",
-        "${var.github_immutable_subject_prefix}:environment:qa",
         "${var.github_immutable_subject_prefix}:environment:production",
       ]
     }
@@ -168,11 +166,6 @@ resource "aws_iam_role" "backup_production" {
   assume_role_policy = data.aws_iam_policy_document.irsa_assume["backup_production"].json
 }
 
-resource "aws_iam_role" "backup_qa" {
-  name               = "agribridge-backup-qa"
-  assume_role_policy = data.aws_iam_policy_document.irsa_assume["backup_qa"].json
-}
-
 data "aws_iam_policy_document" "backup" {
   statement {
     actions   = ["s3:ListBucket"]
@@ -195,8 +188,3 @@ resource "aws_iam_role_policy" "backup_production" {
   policy = data.aws_iam_policy_document.backup.json
 }
 
-resource "aws_iam_role_policy" "backup_qa" {
-  name   = "agribridge-backup-qa"
-  role   = aws_iam_role.backup_qa.id
-  policy = data.aws_iam_policy_document.backup.json
-}

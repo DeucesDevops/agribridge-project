@@ -30,10 +30,6 @@ output "name_servers" {
   value       = aws_route53_zone.app.name_servers
 }
 
-output "qa_hostname" {
-  value = local.qa_hostname
-}
-
 output "production_hostname" {
   value = local.production_hostname
 }
@@ -50,10 +46,6 @@ output "certificate_arn" {
 output "github_actions_role_arn" {
   description = "Terraform writes this to the GitHub variable AWS_ROLE_ARN."
   value       = aws_iam_role.github.arn
-}
-
-output "qa_secret_name" {
-  value = aws_secretsmanager_secret.app["qa"].name
 }
 
 output "production_secret_name" {
@@ -73,11 +65,6 @@ output "backup_bucket" {
 output "backup_role_production_arn" {
   description = "Terraform writes this to the GitHub variable BACKUP_ROLE_PRODUCTION."
   value       = aws_iam_role.backup_production.arn
-}
-
-output "backup_role_qa_arn" {
-  description = "Terraform writes this to the GitHub variable BACKUP_ROLE_QA."
-  value       = aws_iam_role.backup_qa.arn
 }
 
 output "external_secrets_role_arn" {
