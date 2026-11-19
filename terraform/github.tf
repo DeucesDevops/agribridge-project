@@ -11,12 +11,10 @@ locals {
     KOPS_CLUSTER_NAME      = var.cluster_name
     KOPS_STATE_STORE       = "s3://${aws_s3_bucket.kops_state.bucket}"
     ZONE_NAME              = var.zone_name
-    QA_URL                 = "https://${local.qa_hostname}"
     PRODUCTION_URL         = "https://${local.production_hostname}"
     GRAFANA_URL            = "https://${local.grafana_hostname}"
     BACKUP_BUCKET          = aws_s3_bucket.backups.bucket
     BACKUP_ROLE_PRODUCTION = aws_iam_role.backup_production.arn
-    BACKUP_ROLE_QA         = aws_iam_role.backup_qa.arn
   } : {}
 }
 
@@ -26,13 +24,6 @@ resource "github_actions_variable" "this" {
   repository    = local.github_name
   variable_name = each.key
   value         = each.value
-}
-
-resource "github_repository_environment" "qa" {
-  count = var.manage_github ? 1 : 0
-
-  repository  = local.github_name
-  environment = "qa"
 }
 
 resource "github_repository_environment" "production" {

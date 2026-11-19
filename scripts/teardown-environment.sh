@@ -17,7 +17,6 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 
 if kops export kubeconfig --admin --name "$KOPS_CLUSTER_NAME" >/dev/null 2>&1; then
-  helm uninstall agribridge --namespace agribridge-qa || true
   helm uninstall agribridge --namespace agribridge-production || true
   echo "Waiting for Kubernetes load balancers to disappear."
   for _ in $(seq 1 30); do

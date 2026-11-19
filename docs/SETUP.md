@@ -141,12 +141,11 @@ kubectl get nodes
 ## Stage 4. GitHub settings Terraform does not own
 
 Terraform writes `AWS_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`,
-`KOPS_STATE_STORE`, `KOPS_CLUSTER_NAME`, `ZONE_NAME`, `QA_URL`,
-`PRODUCTION_URL`, `GRAFANA_URL`, `BACKUP_BUCKET`, `BACKUP_ROLE_PRODUCTION`
-and `BACKUP_ROLE_QA`. It also creates the `qa` and `production` environments
-and adds `github_reviewer` (default `DeucesDevops`) as the required reviewer
-on production. `prevent_self_review` is false, so that person can approve
-their own production deployment.
+`KOPS_STATE_STORE`, `KOPS_CLUSTER_NAME`, `ZONE_NAME`, `PRODUCTION_URL`,
+`GRAFANA_URL`, `BACKUP_BUCKET` and `BACKUP_ROLE_PRODUCTION`. It also creates
+the `production` environment and adds `github_reviewer` (default
+`DeucesDevops`) as the required reviewer. `prevent_self_review` is false, so
+that person can approve their own production deployment.
 
 Create these yourself. They are credentials for systems outside this AWS account.
 
@@ -166,29 +165,54 @@ You can delete an old `CLUSTER_NAME` variable. The workflow reads
 `KOPS_CLUSTER_NAME`.
 
 Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
-scans, builds, pushes both images to Docker Hub, deploys QA, and then waits
-on production. Approve the production environment in GitHub. That approval is
-the human gate the pipeline is supposed to have.
+scans, builds, pushes both images to Docker Hub, and waits on the production
+environment. Approve that environment in GitHub. That approval is the human
+gate the pipeline is supposed to have.
 
-QA is `https://qa.<zone>`. Production is `https://production.<zone>`.
-Grafana is `https://grafana.<zone>`. The user is `admin`. The password is in
-Secrets Manager:
+Production is `https://production.<zone>`. Grafana is `https://grafana.<zone>`.
+The user is `admin`. The password is in Secrets Manager:
 
 ```sh
 aws secretsmanager get-secret-value --secret-id agribridge/grafana \
   --query SecretString --output text
 ```
 
-The QA demo password is in `agribridge/qa`, field `SEED_PASSWORD`. Production
-does not load demo users.
+Production leaves `SEED_DEMO_DATA` off. The local demo password is
+`SEED_PASSWORD` in `.env`.
+
+## Remove the live QA release
+
+Helm installed the QA release, so Terraform does not delete it. Run this once
+against the live cluster after this change is on `main`:
+
+```sh
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
+helm uninstall agribridge --namespace agribridge-qa
+kubectl delete namespace agribridge-qa
+```
+
+The next `terraform apply` deletes the QA resources that are already in state.
+Export `GITHUB_TOKEN` first, the same way stage 3 does. The apply removes:
+
+- the GitHub environment `qa`
+- the Actions variables `QA_URL` and `BACKUP_ROLE_QA`
+- the IAM role `agribridge-backup-qa` and its policy
+- the Secrets Manager secret `agribridge/qa`, including its generated passwords
+
+No import and no `terraform state` edit is required. Those addresses are
+already in the state from the current `main` apply. Taking them out of the
+configuration is what makes the next apply destroy them. Do not `state rm`
+them first. That would leave the AWS and GitHub objects behind.
+
+ExternalDNS is `upsert-only`, so the `qa.<zone>` records stay after the
+Ingress is gone. In the hosted zone, delete the A and TXT records for
+`qa.<zone>`. Leave `production.<zone>` and `grafana.<zone>`.
 
 ## Stage 5. Show a backup and a restore
 
 Production installs a CronJob that runs `pg_dump` at 02:15 UTC and uploads
 the file to `s3://<backup-bucket>/production/`. A copy is also written to
-`production/latest.sql`. Objects expire after 30 days. QA has the same chart
-switch and leaves it off. Set `backup.enabled: true` in `values-qa.yaml` and
-redeploy when you want a QA copy under the `qa/` prefix.
+`production/latest.sql`. Objects expire after 30 days.
 
 ```sh
 ./scripts/demo-backup-restore.sh agribridge-production
@@ -221,8 +245,6 @@ helm history agribridge --namespace agribridge-production
 helm rollback agribridge REVISION --namespace agribridge-production
 ```
 
-Use the same commands in `agribridge-qa`.
-
 Tear down with `scripts/teardown-environment.sh`. A plain `terraform destroy`
 is the wrong first command. The application Ingress is installed by GitHub
 Actions, so Terraform will delete the load balancer controller while that
@@ -238,7 +260,6 @@ The script does this:
 export GITHUB_TOKEN=...
 export KOPS_STATE_STORE=s3://kops-state-607
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
-helm uninstall agribridge --namespace agribridge-qa
 helm uninstall agribridge --namespace agribridge-production
 terraform -chdir=terraform destroy -var install_platform=true -target=module.platform
 python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform output -raw zone_id)" --apply

@@ -5,7 +5,8 @@ and both can follow an order through fulfilment. The web app is React and Vite.
 The API is Express, with PostgreSQL and Redis.
 
 Local development uses Docker Compose. The cloud environment is a kOps cluster
-on AWS, with a short GitHub Actions pipeline that deploys QA and then production.
+on AWS, with a short GitHub Actions pipeline that deploys production after a
+reviewer approves it.
 
 ## Features
 
@@ -21,24 +22,22 @@ on AWS, with a short GitHub Actions pipeline that deploys QA and then production
 
 The diagram is the delivery path. kOps renders the cluster into Terraform, and Terraform creates it.
 
-A request reaches the API like this. A browser opens the QA or production
-hostname. Route 53 sends it to one Application Load Balancer. TLS is the ACM
+A request reaches the API like this. A browser opens the production hostname.
+Route 53 sends it to one Application Load Balancer. TLS is the ACM
 certificate. The load balancer sends traffic to the web pod, which serves the
-React app and proxies `/api` to Express in the same namespace. Express stores
-data in PostgreSQL and caches in Redis. If Redis is down, the API keeps reading
-PostgreSQL and says so on `/readyz`.
+React app and proxies `/api` to Express. Express stores data in PostgreSQL and
+caches in Redis. If Redis is down, the API keeps reading PostgreSQL and says
+so on `/readyz`.
 
 Locally, Docker Compose runs the same four processes on your machine. In AWS
-they run from one Helm chart, `helm/agribridge`, with `values-qa.yaml` and
-`values-production.yaml`. The namespaces are `agribridge-qa` and
-`agribridge-production`. They share an image tag and keep separate database
-volumes and secrets.
+they run from one Helm chart, `helm/agribridge`, with `values.yaml` and
+`values-production.yaml`, in the namespace `agribridge-production`.
 
 The picture is the delivery path. The workflow file is [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
 SonarQube runs on `main` only when `SONAR_TOKEN` and `SONAR_HOST_URL` are set.
 On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
-`docker.io/macroni607/agribridge-web`. QA installs immediately. Production
-waits for the `production` GitHub environment, then installs the same tag.
+`docker.io/macroni607/agribridge-web`. Production waits for the `production`
+GitHub environment, then installs that tag.
 Pull requests and pushes to `dev` stop after the scans. They do not push or deploy.
 
 kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) into
@@ -48,8 +47,8 @@ The same root creates the public DNS zone, the certificate, the Secrets
 Manager secrets, the backup bucket and the IRSA roles for External Secrets,
 ExternalDNS and the database backup. A second apply installs External Secrets,
 ExternalDNS and the monitoring charts. External Secrets copies `PGPASSWORD`,
-`JWT_SECRET`, and `SEED_PASSWORD` into each namespace. The role trust uses the
-kOps issuer and the audience `amazonaws.com`. Production runs a daily
+`JWT_SECRET`, and `SEED_PASSWORD` into the production namespace. The role
+trust uses the kOps issuer and the audience `amazonaws.com`. Production runs a daily
 `pg_dump` to S3. Grafana is at `https://grafana.<zone>` and asks for the admin
 password.
 
@@ -61,9 +60,9 @@ is installed and empty.
 |---|---|
 | Frontend | React and Vite, served by NGINX |
 | API | Express on Node.js |
-| Data | PostgreSQL and Redis, one volume per namespace |
+| Data | PostgreSQL and Redis in `agribridge-production` |
 | Local | Docker Compose |
-| Chart | `helm/agribridge` with QA and production values |
+| Chart | `helm/agribridge` with `values-production.yaml` |
 | Cluster | kOps, rendered to Terraform in `terraform/kops` |
 | AWS around the cluster | `terraform/`: zone, certificate, secrets, backup bucket, IRSA, platform charts |
 | Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
@@ -73,9 +72,9 @@ is installed and empty.
 
 The repository does not include Argo CD, an NGINX ingress or a Network Load
 Balancer, Fluent Bit or CloudWatch logs, composite actions, or separate
-Terraform roots. The environment name is QA, not staging. Build the cloud
-environment in the order in [docs/SETUP.md](docs/SETUP.md). The longer
-explanation is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Terraform roots. Build the cloud environment in the order in
+[docs/SETUP.md](docs/SETUP.md). The longer explanation is
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 
@@ -101,8 +100,8 @@ before you start.
 | Farmer | `amina.yusuf@example.ng` |
 | Buyer | `procurement@sahelmills.example` |
 
-The password is the value of `SEED_PASSWORD` in your local `.env`. QA can load
-the same demonstration data. Production does not.
+The password is the value of `SEED_PASSWORD` in your local `.env`. Production
+leaves `SEED_DEMO_DATA` off.
 
 ### Useful commands
 
@@ -133,9 +132,9 @@ SonarQube coverage helper tests. It needs Helm, Terraform and Python 3.
 ## Cloud delivery
 
 GitHub Actions lints and tests the app, scans for secrets and vulnerabilities,
-builds both images, writes a SBOM, and pushes them to Docker Hub. It then
-installs the Helm chart in QA. Production waits for a reviewer on the
-`production` environment and installs the same image tag.
+builds both images, writes a SBOM, and pushes them to Docker Hub. Production
+waits for a reviewer on the `production` environment and installs that image
+tag.
 
 kOps renders the cluster and Terraform creates it, the zone, the certificate,
 the IAM roles and the platform charts. `scripts/bootstrap-state.sh` creates

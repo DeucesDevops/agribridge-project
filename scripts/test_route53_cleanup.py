@@ -10,17 +10,17 @@ class Route53CleanupTest(unittest.TestCase):
             {"Name": "agribridge.deuces.dev.", "Type": "SOA", "TTL": 900, "ResourceRecords": [{"Value": "ns-1.awsdns-00.com. hostmaster.amazon.com. 1 7200 900 1209600 86400"}]},
             {"Name": "_abc.agribridge.deuces.dev.", "Type": "CNAME", "TTL": 60, "ResourceRecords": [{"Value": "example.acm-validations.aws."}]},
             {
-                "Name": "qa.agribridge.deuces.dev.",
+                "Name": "production.agribridge.deuces.dev.",
                 "Type": "A",
                 "AliasTarget": {"DNSName": "example.elb.amazonaws.com.", "HostedZoneId": "Z1", "EvaluateTargetHealth": False},
             },
-            {"Name": "qa.agribridge.deuces.dev.", "Type": "TXT", "TTL": 300, "ResourceRecords": [{"Value": "\"heritage=external-dns\""}]},
+            {"Name": "production.agribridge.deuces.dev.", "Type": "TXT", "TTL": 300, "ResourceRecords": [{"Value": "\"heritage=external-dns\""}]},
         ]
         changes = changes_for(records, "agribridge.deuces.dev")
         kinds = [(change["ResourceRecordSet"]["Name"], change["ResourceRecordSet"]["Type"]) for change in changes]
         self.assertEqual(kinds, [
-            ("qa.agribridge.deuces.dev.", "A"),
-            ("qa.agribridge.deuces.dev.", "TXT"),
+            ("production.agribridge.deuces.dev.", "A"),
+            ("production.agribridge.deuces.dev.", "TXT"),
         ])
         self.assertIn("AliasTarget", changes[0]["ResourceRecordSet"])
 
