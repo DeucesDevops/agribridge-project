@@ -25,6 +25,11 @@ locals {
           enabled = false
         }
       }
+      # Calico pod IPs are not routable from the VPC, so the ALB targets the
+      # node port (same as the app ingress) instead of pod IPs.
+      service = {
+        type = "NodePort"
+      }
       ingress = {
         enabled          = true
         ingressClassName = "alb"
@@ -33,7 +38,7 @@ locals {
         hosts            = [var.grafana_hostname]
         annotations = {
           "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
-          "alb.ingress.kubernetes.io/target-type"      = "ip"
+          "alb.ingress.kubernetes.io/target-type"      = "instance"
           "alb.ingress.kubernetes.io/group.name"       = "agribridge"
           "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\":80},{\"HTTPS\":443}]"
           "alb.ingress.kubernetes.io/ssl-redirect"     = "443"

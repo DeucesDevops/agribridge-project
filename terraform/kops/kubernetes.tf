@@ -924,219 +924,192 @@ resource "aws_route_table_association" "us-east-1b-k8s-agribridge-deuces-dev" {
 }
 
 resource "aws_s3_object" "cluster-completed-spec" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_cluster-completed.spec_content")
-  key                    = "k8s.agribridge.deuces.dev/cluster-completed.spec"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_cluster-completed.spec_content")
+  key      = "k8s.agribridge.deuces.dev/cluster-completed.spec"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "discovery-json" {
-  bucket                 = "agribridge-oidc-237258628535"
-  content                = file("${path.module}/data/aws_s3_object_discovery.json_content")
-  key                    = ".well-known/openid-configuration"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "agribridge-oidc-237258628535"
+  content  = file("${path.module}/data/aws_s3_object_discovery.json_content")
+  key      = ".well-known/openid-configuration"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "etcd-cluster-spec-events" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_etcd-cluster-spec-events_content")
-  key                    = "k8s.agribridge.deuces.dev/backups/etcd/events/control/etcd-cluster-spec"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_etcd-cluster-spec-events_content")
+  key      = "k8s.agribridge.deuces.dev/backups/etcd/events/control/etcd-cluster-spec"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "etcd-cluster-spec-main" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_etcd-cluster-spec-main_content")
-  key                    = "k8s.agribridge.deuces.dev/backups/etcd/main/control/etcd-cluster-spec"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_etcd-cluster-spec-main_content")
+  key      = "k8s.agribridge.deuces.dev/backups/etcd/main/control/etcd-cluster-spec"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-aws-cloud-controller-addons-k8s-io-k8s-1-18" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-cloud-controller.addons.k8s.io-k8s-1.18_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/aws-cloud-controller.addons.k8s.io/k8s-1.18.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-cloud-controller.addons.k8s.io-k8s-1.18_content")
+  key      = "k8s.agribridge.deuces.dev/addons/aws-cloud-controller.addons.k8s.io/k8s-1.18.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-aws-ebs-csi-driver-addons-k8s-io-k8s-1-17" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-ebs-csi-driver.addons.k8s.io-k8s-1.17_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/aws-ebs-csi-driver.addons.k8s.io/k8s-1.17.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-ebs-csi-driver.addons.k8s.io-k8s-1.17_content")
+  key      = "k8s.agribridge.deuces.dev/addons/aws-ebs-csi-driver.addons.k8s.io/k8s-1.17.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-aws-load-balancer-controller-addons-k8s-io-k8s-1-19-irsa" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-load-balancer-controller.addons.k8s.io-k8s-1.19-irsa_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/aws-load-balancer-controller.addons.k8s.io/k8s-1.19-irsa.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-aws-load-balancer-controller.addons.k8s.io-k8s-1.19-irsa_content")
+  key      = "k8s.agribridge.deuces.dev/addons/aws-load-balancer-controller.addons.k8s.io/k8s-1.19-irsa.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-bootstrap" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-bootstrap_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/bootstrap-channel.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-bootstrap_content")
+  key      = "k8s.agribridge.deuces.dev/addons/bootstrap-channel.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-certmanager-io-k8s-1-16" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-certmanager.io-k8s-1.16_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/certmanager.io/k8s-1.16.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-certmanager.io-k8s-1.16_content")
+  key      = "k8s.agribridge.deuces.dev/addons/certmanager.io/k8s-1.16.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-coredns-addons-k8s-io-k8s-1-12" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-coredns.addons.k8s.io-k8s-1.12_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/coredns.addons.k8s.io/k8s-1.12.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-coredns.addons.k8s.io-k8s-1.12_content")
+  key      = "k8s.agribridge.deuces.dev/addons/coredns.addons.k8s.io/k8s-1.12.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-dns-controller-addons-k8s-io-k8s-1-12" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-dns-controller.addons.k8s.io-k8s-1.12_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/dns-controller.addons.k8s.io/k8s-1.12.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-dns-controller.addons.k8s.io-k8s-1.12_content")
+  key      = "k8s.agribridge.deuces.dev/addons/dns-controller.addons.k8s.io/k8s-1.12.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-eks-pod-identity-webhook-addons-k8s-io-k8s-1-16" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-eks-pod-identity-webhook.addons.k8s.io-k8s-1.16_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/eks-pod-identity-webhook.addons.k8s.io/k8s-1.16.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-eks-pod-identity-webhook.addons.k8s.io-k8s-1.16_content")
+  key      = "k8s.agribridge.deuces.dev/addons/eks-pod-identity-webhook.addons.k8s.io/k8s-1.16.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-kops-controller-addons-k8s-io-k8s-1-16" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-kops-controller.addons.k8s.io-k8s-1.16_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/kops-controller.addons.k8s.io/k8s-1.16.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-kops-controller.addons.k8s.io-k8s-1.16_content")
+  key      = "k8s.agribridge.deuces.dev/addons/kops-controller.addons.k8s.io/k8s-1.16.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-kubelet-api-rbac-addons-k8s-io-k8s-1-9" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-kubelet-api.rbac.addons.k8s.io-k8s-1.9_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/kubelet-api.rbac.addons.k8s.io/k8s-1.9.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-kubelet-api.rbac.addons.k8s.io-k8s-1.9_content")
+  key      = "k8s.agribridge.deuces.dev/addons/kubelet-api.rbac.addons.k8s.io/k8s-1.9.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-limit-range-addons-k8s-io" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-limit-range.addons.k8s.io_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/limit-range.addons.k8s.io/v1.5.0.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-limit-range.addons.k8s.io_content")
+  key      = "k8s.agribridge.deuces.dev/addons/limit-range.addons.k8s.io/v1.5.0.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-networking-projectcalico-org-k8s-1-25" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-networking.projectcalico.org-k8s-1.25_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/networking.projectcalico.org/k8s-1.25.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-networking.projectcalico.org-k8s-1.25_content")
+  key      = "k8s.agribridge.deuces.dev/addons/networking.projectcalico.org/k8s-1.25.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-node-termination-handler-aws-k8s-1-11" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-node-termination-handler.aws-k8s-1.11_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/node-termination-handler.aws/k8s-1.11.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-node-termination-handler.aws-k8s-1.11_content")
+  key      = "k8s.agribridge.deuces.dev/addons/node-termination-handler.aws/k8s-1.11.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "k8s-agribridge-deuces-dev-addons-storage-aws-addons-k8s-io-v1-15-0" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-storage-aws.addons.k8s.io-v1.15.0_content")
-  key                    = "k8s.agribridge.deuces.dev/addons/storage-aws.addons.k8s.io/v1.15.0.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_k8s.agribridge.deuces.dev-addons-storage-aws.addons.k8s.io-v1.15.0_content")
+  key      = "k8s.agribridge.deuces.dev/addons/storage-aws.addons.k8s.io/v1.15.0.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "keys-json" {
-  bucket                 = "agribridge-oidc-237258628535"
-  content                = file("${path.module}/data/aws_s3_object_keys.json_content")
-  key                    = "openid/v1/jwks"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "agribridge-oidc-237258628535"
+  content  = file("${path.module}/data/aws_s3_object_keys.json_content")
+  key      = "openid/v1/jwks"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "kops-version-txt" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_kops-version.txt_content")
-  key                    = "k8s.agribridge.deuces.dev/kops-version.txt"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_kops-version.txt_content")
+  key      = "k8s.agribridge.deuces.dev/kops-version.txt"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "manifests-channels-kops-channels" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_manifests-channels-kops-channels_content")
-  key                    = "k8s.agribridge.deuces.dev/manifests/channels/kops-channels.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_manifests-channels-kops-channels_content")
+  key      = "k8s.agribridge.deuces.dev/manifests/channels/kops-channels.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "manifests-etcdmanager-events-control-plane-us-east-1a" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_manifests-etcdmanager-events-control-plane-us-east-1a_content")
-  key                    = "k8s.agribridge.deuces.dev/manifests/etcd/events-control-plane-us-east-1a.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_manifests-etcdmanager-events-control-plane-us-east-1a_content")
+  key      = "k8s.agribridge.deuces.dev/manifests/etcd/events-control-plane-us-east-1a.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "manifests-etcdmanager-main-control-plane-us-east-1a" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_manifests-etcdmanager-main-control-plane-us-east-1a_content")
-  key                    = "k8s.agribridge.deuces.dev/manifests/etcd/main-control-plane-us-east-1a.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_manifests-etcdmanager-main-control-plane-us-east-1a_content")
+  key      = "k8s.agribridge.deuces.dev/manifests/etcd/main-control-plane-us-east-1a.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "manifests-static-kube-apiserver-healthcheck" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_manifests-static-kube-apiserver-healthcheck_content")
-  key                    = "k8s.agribridge.deuces.dev/manifests/static/kube-apiserver-healthcheck.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_manifests-static-kube-apiserver-healthcheck_content")
+  key      = "k8s.agribridge.deuces.dev/manifests/static/kube-apiserver-healthcheck.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "nodeupconfig-control-plane-us-east-1a" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_nodeupconfig-control-plane-us-east-1a_content")
-  key                    = "k8s.agribridge.deuces.dev/igconfig/control-plane/control-plane-us-east-1a/nodeupconfig.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_nodeupconfig-control-plane-us-east-1a_content")
+  key      = "k8s.agribridge.deuces.dev/igconfig/control-plane/control-plane-us-east-1a/nodeupconfig.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "nodeupconfig-nodes-us-east-1a" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_nodeupconfig-nodes-us-east-1a_content")
-  key                    = "k8s.agribridge.deuces.dev/igconfig/node/nodes-us-east-1a/nodeupconfig.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_nodeupconfig-nodes-us-east-1a_content")
+  key      = "k8s.agribridge.deuces.dev/igconfig/node/nodes-us-east-1a/nodeupconfig.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "nodeupconfig-nodes-us-east-1b" {
-  bucket                 = "kops-state-607"
-  content                = file("${path.module}/data/aws_s3_object_nodeupconfig-nodes-us-east-1b_content")
-  key                    = "k8s.agribridge.deuces.dev/igconfig/node/nodes-us-east-1b/nodeupconfig.yaml"
-  provider               = aws.files
-  server_side_encryption = "AES256"
+  bucket   = "kops-state-607"
+  content  = file("${path.module}/data/aws_s3_object_nodeupconfig-nodes-us-east-1b_content")
+  key      = "k8s.agribridge.deuces.dev/igconfig/node/nodes-us-east-1b/nodeupconfig.yaml"
+  provider = aws.files
 }
 
 resource "aws_security_group" "masters-k8s-agribridge-deuces-dev" {
