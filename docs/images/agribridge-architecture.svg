@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 700" role="img">
+  <title>AgriBridge architecture</title>
+  <desc>Production path: GitHub Actions builds images, a reviewer approves, and Helm deploys to the kOps cluster. Browsers reach the app and Grafana through one Application Load Balancer.</desc>
+  <rect width="1180" height="700" fill="#071422"/>
+  <text x="590" y="42" text-anchor="middle" fill="#3ddc97" font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="28" font-weight="700">AgriBridge architecture</text>
+
+  <rect x="28" y="68" width="360" height="600" rx="16" fill="#0e2436" stroke="#1e4a68"/>
+  <text x="48" y="100" fill="#d6e6f5" font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="16" font-weight="700">GitHub Actions</text>
+
+  <g font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="14" fill="#e8fff4">
+    <rect x="48" y="118" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="141" text-anchor="middle">Lint and test</text>
+    <rect x="48" y="166" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="189" text-anchor="middle">Gitleaks</text>
+    <rect x="48" y="214" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="237" text-anchor="middle">SonarQube on main</text>
+    <rect x="48" y="262" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="285" text-anchor="middle">Trivy</text>
+    <rect x="48" y="310" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="333" text-anchor="middle">Checkov</text>
+    <rect x="48" y="358" width="220" height="36" rx="8" fill="#145c45"/>
+    <text x="158" y="381" text-anchor="middle">Build, scan, SBOM</text>
+    <rect x="48" y="414" width="320" height="40" rx="8" fill="#c4551a"/>
+    <text x="208" y="439" text-anchor="middle" fill="#fff">Docker Hub on main</text>
+    <rect x="48" y="468" width="320" height="40" rx="8" fill="#6b3f12"/>
+    <text x="208" y="493" text-anchor="middle" fill="#fff">production environment approval</text>
+    <rect x="48" y="522" width="320" height="40" rx="8" fill="#c4551a"/>
+    <text x="208" y="547" text-anchor="middle" fill="#fff">Helm: agribridge-production</text>
+    <text x="48" y="590" fill="#9eb6c9" font-size="13">Pull requests and dev stop after the scans.</text>
+    <text x="48" y="612" fill="#9eb6c9" font-size="13">They do not push or deploy.</text>
+  </g>
+
+  <path d="M368 542 H410" stroke="#f0a36a" stroke-width="2" fill="none"/>
+  <polygon points="410,536 422,542 410,548" fill="#f0a36a"/>
+
+  <rect x="430" y="68" width="722" height="600" rx="16" fill="#0e2436" stroke="#1e4a68"/>
+  <text x="450" y="100" fill="#d6e6f5" font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="16" font-weight="700">AWS · kOps cluster k8s.agribridge.deuces.dev</text>
+  <text x="450" y="122" fill="#9eb6c9" font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="13">1 t3.medium control plane · 2 t3.large workers · rendered with kops --target=terraform</text>
+
+  <g font-family="ui-sans-serif, Segoe UI, sans-serif" font-size="14">
+    <rect x="450" y="146" width="100" height="40" rx="8" fill="#12324c" stroke="#7eb6e6"/>
+    <text x="500" y="171" text-anchor="middle" fill="#e7f3ff">Browser</text>
+    <rect x="580" y="146" width="120" height="40" rx="8" fill="#c4551a"/>
+    <text x="640" y="171" text-anchor="middle" fill="#fff">Route 53</text>
+    <rect x="730" y="146" width="180" height="40" rx="8" fill="#1d4e89"/>
+    <text x="820" y="171" text-anchor="middle" fill="#fff">ALB + ACM</text>
+    <text x="930" y="164" fill="#9eb6c9" font-size="12">instance targets</text>
+    <text x="930" y="180" fill="#9eb6c9" font-size="12">group agribridge</text>
+    <path d="M550 166 H580" stroke="#f0a36a" stroke-width="2"/>
+    <path d="M700 166 H730" stroke="#f0a36a" stroke-width="2"/>
+    <path d="M820 186 V214" stroke="#f0a36a" stroke-width="2"/>
+    <path d="M820 214 H560 V248" stroke="#f0a36a" stroke-width="2" fill="none"/>
+    <path d="M820 214 H980 V248" stroke="#f0a36a" stroke-width="2" fill="none"/>
+
+    <rect x="450" y="248" width="250" height="78" rx="8" fill="#145c45"/>
+    <text x="575" y="274" text-anchor="middle" fill="#e8fff4">Web NodePort · NGINX</text>
+    <text x="575" y="296" text-anchor="middle" fill="#b7f3d8" font-size="12">production.agribridge.deuces.dev</text>
+    <text x="575" y="312" text-anchor="middle" fill="#b7f3d8" font-size="12">/ · /api/ · /healthz · /readyz · /version</text>
+
+    <rect x="860" y="248" width="250" height="78" rx="8" fill="#1d4e89"/>
+    <text x="985" y="274" text-anchor="middle" fill="#fff">Grafana NodePort</text>
+    <text x="985" y="296" text-anchor="middle" fill="#d6e8ff" font-size="12">grafana.agribridge.deuces.dev</text>
+    <text x="985" y="312" text-anchor="middle" fill="#d6e8ff" font-size="12">same ALB · admin_user / admin_password</text>
+
+    <path d="M700 287 H760" stroke="#3ddc97" stroke-width="2"/>
+    <polygon points="760,281 772,287 760,293" fill="#3ddc97"/>
+    <rect x="772" y="260" width="70" height="54" rx="8" fill="#145c45"/>
+    <text x="807" y="291" text-anchor="middle" fill="#e8fff4">API</text>
+
+    <rect x="450" y="360" width="160" height="48" rx="8" fill="#0f6b4c"/>
+    <text x="530" y="389" text-anchor="middle" fill="#e8fff4">PostgreSQL</text>
+    <rect x="630" y="360" width="140" height="48" rx="8" fill="#8d2a2a"/>
+    <text x="700" y="389" text-anchor="middle" fill="#fff">Redis</text>
+    <path d="M807 314 V384 H790" stroke="#3ddc97" stroke-width="2" fill="none"/>
+    <path d="M807 384 H610 V408" stroke="#3ddc97" stroke-width="2" fill="none"/>
+
+    <rect x="450" y="440" width="200" height="56" rx="8" fill="#12324c" stroke="#7eb6e6"/>
+    <text x="550" y="464" text-anchor="middle" fill="#e7f3ff">Prometheus</text>
+    <text x="550" y="482" text-anchor="middle" fill="#9eb6c9" font-size="12">cluster only · scrapes /metrics</text>
+    <rect x="670" y="440" width="150" height="56" rx="8" fill="#12324c" stroke="#7eb6e6"/>
+    <text x="745" y="464" text-anchor="middle" fill="#e7f3ff">Loki</text>
+    <text x="745" y="482" text-anchor="middle" fill="#9eb6c9" font-size="12">Promtail ships logs</text>
+    <rect x="840" y="440" width="270" height="56" rx="8" fill="#12324c" stroke="#7eb6e6"/>
+    <text x="975" y="464" text-anchor="middle" fill="#e7f3ff">External Secrets</text>
+    <text x="975" y="482" text-anchor="middle" fill="#9eb6c9" font-size="12">Secrets Manager agribridge/production</text>
+
+    <rect x="450" y="524" width="320" height="56" rx="8" fill="#6b3f12"/>
+    <text x="610" y="548" text-anchor="middle" fill="#fff">Postgres backup CronJob</text>
+    <text x="610" y="566" text-anchor="middle" fill="#f3d7b0" font-size="12">02:15 UTC · pg_dump · 30-day expiry</text>
+    <rect x="790" y="524" width="320" height="56" rx="8" fill="#c4551a"/>
+    <text x="950" y="557" text-anchor="middle" fill="#fff">S3 backup bucket</text>
+
+    <text x="450" y="620" fill="#9eb6c9" font-size="13">Terraform also owns the zone, the certificate, IAM and IRSA, GitHub variables,</text>
+    <text x="450" y="640" fill="#9eb6c9" font-size="13">and the platform charts: external-dns, external-secrets, kube-prometheus-stack, Loki, Promtail.</text>
+    <text x="450" y="660" fill="#9eb6c9" font-size="13">kOps installs the AWS Load Balancer Controller. Tracing (OpenTelemetry and Tempo) is later.</text>
+  </g>
+</svg>

@@ -80,12 +80,25 @@ kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
 terraform -chdir=terraform apply -var install_platform=true
 ```
 
+`kops validate` can time out while `api.k8s.agribridge.deuces.dev` is still
+propagating. A resolver that received `NXDOMAIN` during that window keeps the
+negative answer until the cache expires, and the 15 minute wait then fails
+even though the API is up. Wait for that cache to expire, or ask a resolver
+that did not cache the failure, then run validate again and run the platform
+apply. The script stops before that second apply when validate fails, so run
+these two commands yourself:
+
+```sh
+kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
+terraform -chdir=terraform apply -var install_platform=true
+```
+
 The first apply creates the certificate, the secrets, the backup bucket, the
 GitHub variables, and the cluster. The second apply installs External Secrets,
-ExternalDNS and the monitoring charts. It reads the kubeconfig from
-`kops export kubeconfig --admin`. That admin credential is stored in the kOps
-state bucket. The GitHub Actions role can read that bucket, which is why the
-deploy job can do the same export. Treat the role as cluster-admin.
+ExternalDNS, kube-prometheus-stack, Loki, and Promtail. It reads the kubeconfig
+from `kops export kubeconfig --admin`. That admin credential is stored in the
+kOps state bucket. The GitHub Actions role can read that bucket, which is why
+the deploy job can do the same export. Treat the role as cluster-admin.
 
 `install_platform` defaults to false. A plain `terraform apply` builds the
 AWS resources and leaves the charts alone.
@@ -112,6 +125,16 @@ terraform -chdir=terraform init -backend-config=backend.hcl
 # Only if these are not already in the state. Skip an address Terraform cannot find.
 terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
 terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
+
+# The apply script does not adopt an existing certificate or backup bucket.
+# Import them only when they already exist in this account and are not in state.
+CERT_ARN=$(aws acm list-certificates --region us-east-1 \
+  --query "CertificateSummaryList[?DomainName=='agribridge.deuces.dev'].CertificateArn | [0]" \
+  --output text)
+if [ -n "$CERT_ARN" ] && [ "$CERT_ARN" != "None" ]; then
+  terraform -chdir=terraform import aws_acm_certificate.app "$CERT_ARN"
+fi
+terraform -chdir=terraform import aws_s3_bucket.backups agribridge-backups-237258628535
 
 # The zone used to be a data source. Adopt the real zone.
 terraform -chdir=terraform state rm data.aws_route53_zone.app
@@ -169,49 +192,48 @@ scans, builds, pushes both images to Docker Hub, and waits on the production
 environment. Approve that environment in GitHub. That approval is the human
 gate the pipeline is supposed to have.
 
-Production is `https://production.<zone>`. Grafana is `https://grafana.<zone>`.
-The user is `admin`. The password is in Secrets Manager:
+The app is [https://production.agribridge.deuces.dev](https://production.agribridge.deuces.dev).
+Grafana is [https://grafana.agribridge.deuces.dev](https://grafana.agribridge.deuces.dev).
+Grafana's username and password are the `admin_user` and `admin_password` keys
+in Secrets Manager `agribridge/grafana`. Read them on your machine and keep
+the password out of git, issues, and chat:
 
 ```sh
 aws secretsmanager get-secret-value --secret-id agribridge/grafana \
   --query SecretString --output text
 ```
 
-Production leaves `SEED_DEMO_DATA` off. The local demo password is
-`SEED_PASSWORD` in `.env`.
+The JSON has those two keys. `admin_user` is `admin`.
 
-## Remove the live QA release
-
-Helm installed the QA release, so Terraform does not delete it. Run this once
-against the live cluster after this change is on `main`:
+Prometheus is only inside the cluster. In Grafana, open Explore and pick the
+Prometheus datasource. For the Prometheus UI itself:
 
 ```sh
-kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
-helm uninstall agribridge --namespace agribridge-qa
-kubectl delete namespace agribridge-qa
+kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090
 ```
 
-The next `terraform apply` deletes the QA resources that are already in state.
-Export `GITHUB_TOKEN` first, the same way stage 3 does. The apply removes:
+Production is the only deployed environment. `SEED_DEMO_DATA` is `false`, and
+the API does not register users. After the first production deploy, load the
+demo accounts once. The image has no `npm`, so call the seed module with
+`node`. The pod already has `SEED_PASSWORD` from Secrets Manager
+`agribridge/production`. The seed skips itself when any user row exists.
 
-- the GitHub environment `qa`
-- the Actions variables `QA_URL` and `BACKUP_ROLE_QA`
-- the IAM role `agribridge-backup-qa` and its policy
-- the Secrets Manager secret `agribridge/qa`, including its generated passwords
+```sh
+kubectl -n agribridge-production exec deploy/agribridge-api -- \
+  node -e "import('./src/seed.js').then(m=>m.seedDemoData()).then(r=>{console.log(JSON.stringify(r,null,2));process.exit(0)}).catch(e=>{console.error(e);process.exit(1)})"
+```
 
-No import and no `terraform state` edit is required. Those addresses are
-already in the state from the current `main` apply. Taking them out of the
-configuration is what makes the next apply destroy them. Do not `state rm`
-them first. That would leave the AWS and GitHub objects behind.
-
-ExternalDNS is `upsert-only`, so the `qa.<zone>` records stay after the
-Ingress is gone. In the hosted zone, delete the A and TXT records for
-`qa.<zone>`. Leave `production.<zone>` and `grafana.<zone>`.
+Sign in as `amina.yusuf@example.ng` (farmer),
+`procurement@sahelmills.example` (buyer), or `agent@agribridge.example`
+(agent). The password is the `SEED_PASSWORD` key in `agribridge/production`.
+The seed also inserts more farmers, buyers, lots, and orders. Locally, Compose
+does this on startup because `SEED_DEMO_DATA=true`, and the password is
+`SEED_PASSWORD` in `.env`.
 
 ## Stage 5. Show a backup and a restore
 
 Production installs a CronJob that runs `pg_dump` at 02:15 UTC and uploads
-the file to `s3://<backup-bucket>/production/`. A copy is also written to
+the file to `s3://agribridge-backups-237258628535/production/`. A copy is also written to
 `production/latest.sql`. Objects expire after 30 days.
 
 ```sh

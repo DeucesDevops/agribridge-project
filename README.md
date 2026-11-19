@@ -18,22 +18,40 @@ reviewer approves it.
 
 ## Architecture
 
-![AgriBridge architecture](docs/images/agribridge-architecture.jpg)
+![AgriBridge architecture](docs/images/agribridge-architecture.svg)
 
 The diagram is the delivery path. kOps renders the cluster into Terraform, and Terraform creates it.
 
-A request reaches the API like this. A browser opens the production hostname.
-Route 53 sends it to one Application Load Balancer. TLS is the ACM
-certificate. The load balancer sends traffic to the web pod, which serves the
-React app and proxies `/api` to Express. Express stores data in PostgreSQL and
-caches in Redis. If Redis is down, the API keeps reading PostgreSQL and says
-so on `/readyz`.
+A browser opens [https://production.agribridge.deuces.dev](https://production.agribridge.deuces.dev).
+Route 53 sends that name to one internet-facing Application Load Balancer.
+TLS is the ACM certificate for `agribridge.deuces.dev` and `*.agribridge.deuces.dev`.
+Calico pod IPs are not routable from the VPC, so the load balancer uses
+instance targets and the web Service is a NodePort. NGINX in the web pod
+serves the React app.
 
-Locally, Docker Compose runs the same four processes on your machine. In AWS
-they run from one Helm chart, `helm/agribridge`, with `values.yaml` and
+The API serves `/healthz`, `/readyz`, `/version`, and `/metrics` at the root,
+not under `/api`. NGINX on the public hostname routes them like this.
+
+| Public path | Who answers |
+|---|---|
+| `/` | React app |
+| `/api/` | Proxied to Express. The `/api` prefix is kept |
+| `/healthz` | NGINX itself, body `ok`. This is the load balancer health check |
+| `/readyz` | Proxied to the API. Redis down is reported here and PostgreSQL is still read |
+| `/version` | Proxied to the API |
+| `/metrics` | Not proxied. Prometheus scrapes the API Service inside the cluster |
+
+Express stores data in PostgreSQL and caches in Redis. Sign-in uses the seeded
+accounts. The API has login, logout, and session lookup, and it does not
+register new users.
+
+Locally, Docker Compose runs the same four processes and loads the demo data.
+In AWS they run from one Helm chart, `helm/agribridge`, with `values.yaml` and
 `values-production.yaml`, in the namespace `agribridge-production`.
+Production sets `SEED_DEMO_DATA=false`. The accounts were loaded once with
+`node`, because the image has no npm. The command is in [docs/SETUP.md](docs/SETUP.md).
 
-The picture is the delivery path. The workflow file is [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
+The workflow file is [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
 SonarQube runs on `main` only when `SONAR_TOKEN` and `SONAR_HOST_URL` are set.
 On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
 `docker.io/macroni607/agribridge-web`. Production waits for the `production`
@@ -41,20 +59,30 @@ GitHub environment, then installs that tag.
 Pull requests and pushes to `dev` stop after the scans. They do not push or deploy.
 
 kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) into
-Terraform, and `terraform apply` creates it: the VPC, the EC2 nodes, the EBS
-CSI driver, the AWS Load Balancer Controller, and the service-account issuer.
-The same root creates the public DNS zone, the certificate, the Secrets
-Manager secrets, the backup bucket and the IRSA roles for External Secrets,
-ExternalDNS and the database backup. A second apply installs External Secrets,
-ExternalDNS and the monitoring charts. External Secrets copies `PGPASSWORD`,
-`JWT_SECRET`, and `SEED_PASSWORD` into the production namespace. The role
-trust uses the kOps issuer and the audience `amazonaws.com`. Production runs a daily
-`pg_dump` to S3. Grafana is at `https://grafana.<zone>` and asks for the admin
-password.
+Terraform with `kops update cluster --target=terraform`, and `terraform apply`
+creates it: the VPC, one `t3.medium` control plane, two `t3.large` workers,
+the EBS CSI driver, the AWS Load Balancer Controller, and the service-account
+issuer. The same root creates the public DNS zone, the certificate, the Secrets
+Manager secrets, the backup bucket, the GitHub Actions variables and
+`production` environment, and the IRSA roles for External Secrets, ExternalDNS
+and the database backup. A second apply, with `install_platform=true`, installs
+External Secrets, ExternalDNS, kube-prometheus-stack, Loki, and Promtail.
+External Secrets copies `PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD` into
+the production namespace. The role trust uses the kOps issuer and the audience
+`amazonaws.com`. Production runs a daily `pg_dump` to S3 at 02:15 UTC. Objects
+expire after 30 days.
 
-Prometheus scrapes the API. Promtail ships container logs to Loki. Grafana
-reads Prometheus, Loki, and Tempo. The API does not emit traces yet, so Tempo
-is installed and empty.
+Grafana is [https://grafana.agribridge.deuces.dev](https://grafana.agribridge.deuces.dev)
+on that same load balancer. Its Service is a NodePort, the Ingress target type
+is `instance`, and the load balancer group is `agribridge`. Sign in with the
+`admin_user` and `admin_password` keys in Secrets Manager `agribridge/grafana`.
+Anonymous access and sign-up are off. Prometheus stays inside the cluster. Use
+it from Grafana Explore, or open its own UI with
+`kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090`.
+
+Prometheus scrapes the API at `/metrics`. Promtail ships container logs to Loki.
+Grafana reads Prometheus and Loki. Distributed tracing is a later addition:
+OpenTelemetry in the API, plus Tempo. Neither is installed.
 
 | Layer | Where it lives |
 |---|---|
@@ -63,12 +91,12 @@ is installed and empty.
 | Data | PostgreSQL and Redis in `agribridge-production` |
 | Local | Docker Compose |
 | Chart | `helm/agribridge` with `values-production.yaml` |
-| Cluster | kOps, rendered to Terraform in `terraform/kops` |
-| AWS around the cluster | `terraform/`: zone, certificate, secrets, backup bucket, IRSA, platform charts |
+| Cluster | kOps `k8s.agribridge.deuces.dev`, rendered to Terraform in `terraform/kops` |
+| AWS around the cluster | `terraform/`: zone, certificate, secrets, backup bucket, GitHub, IRSA, platform charts |
 | Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
-| Traffic | Route 53 and ACM to the ALB, then the web Service |
+| Traffic | Route 53 and ACM to one ALB, then the web and Grafana NodePorts |
 | Secrets | Secrets Manager through External Secrets |
-| Observability | Prometheus, Grafana, Loki, Promtail, Tempo |
+| Observability | Prometheus, Grafana, Loki, Promtail |
 
 The repository does not include Argo CD, an NGINX ingress or a Network Load
 Balancer, Fluent Bit or CloudWatch logs, composite actions, or separate
@@ -99,9 +127,14 @@ before you start.
 |---|---|
 | Farmer | `amina.yusuf@example.ng` |
 | Buyer | `procurement@sahelmills.example` |
+| Agent | `agent@agribridge.example` |
 
-The password is the value of `SEED_PASSWORD` in your local `.env`. Production
-leaves `SEED_DEMO_DATA` off.
+Locally the password is `SEED_PASSWORD` in `.env`. Compose sets
+`SEED_DEMO_DATA=true` and loads these accounts on startup, plus additional
+farmers, buyers, lots, and orders. Production leaves `SEED_DEMO_DATA` off.
+The production password is the `SEED_PASSWORD` key in Secrets Manager
+`agribridge/production`. Read that key when you sign in. Do not paste it into
+git, issues, or chat.
 
 ### Useful commands
 

@@ -2,7 +2,9 @@ alertmanager:
   enabled: false
 grafana:
   service:
-    type: ClusterIP
+    # Calico pod IPs are not routable from the VPC. The ALB uses instance targets,
+    # so Grafana is a NodePort. terraform/modules/platform sets the same type.
+    type: NodePort
   resources:
     requests:
       cpu: 50m
@@ -14,11 +16,6 @@ grafana:
       type: loki
       access: proxy
       url: http://loki-gateway.monitoring.svc.cluster.local
-      isDefault: false
-    - name: Tempo
-      type: tempo
-      access: proxy
-      url: http://tempo.monitoring.svc.cluster.local:3200
       isDefault: false
 prometheus:
   prometheusSpec:
