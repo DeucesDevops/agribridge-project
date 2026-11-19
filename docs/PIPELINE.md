@@ -37,8 +37,8 @@ Create these under **Settings → Secrets and variables → Actions**.
 | Variable | `ACM_CERTIFICATE_ARN` | For deploy | Terraform writes this |
 | Variable | `BACKUP_BUCKET` | For production | Terraform writes this |
 | Variable | `BACKUP_ROLE_PRODUCTION` | For production | Terraform writes this |
-| Variable | `PRODUCTION_URL` | No | Terraform writes `https://production.<zone>` |
-| Variable | `GRAFANA_URL` | No | Terraform writes `https://grafana.<zone>` |
+| Variable | `PRODUCTION_URL` | No | Terraform writes `https://production.agribridge.deuces.dev` |
+| Variable | `GRAFANA_URL` | No | Terraform writes `https://grafana.agribridge.deuces.dev` |
 | Variable | `SONAR_HOST_URL` | No | HTTPS URL of SonarQube. The job skips when this is empty |
 | Secret | `SONAR_TOKEN` | No | SonarQube project token. The job skips when this is empty |
 

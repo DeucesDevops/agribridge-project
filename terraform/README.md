@@ -13,15 +13,26 @@ writes into `kops/` from `kops/cluster.yaml`.
 | `iam.tf` | GitHub Actions role, and IRSA for External Secrets, ExternalDNS and backups |
 | `github.tf` | Actions variables and the `production` environment |
 | `platform.tf` | Helm releases, on the second apply |
-| `modules/platform` | External Secrets, ExternalDNS, Loki, Tempo, Prometheus, Grafana, Promtail |
+| `modules/platform` | External Secrets, ExternalDNS, Loki, Prometheus, Grafana, Promtail |
 
 kOps also installs the AWS Load Balancer Controller, the EBS CSI driver and
 the pod-identity webhook. The launch templates have no SSH key. `sshAccess`
 in the cluster spec is empty. The API security group allows 443 from the
 internet so GitHub-hosted runners can deploy. Authentication is still required.
 
-Grafana is `https://grafana.<zone>` on the same load balancer, with anonymous
-access off. The admin password is `agribridge/grafana` in Secrets Manager.
+Grafana is https://grafana.agribridge.deuces.dev on the same load balancer.
+The Grafana Service is a NodePort and the Ingress uses instance targets, in
+the load balancer group `agribridge`, because Calico pod IPs are not routable
+from the VPC. Anonymous access and sign-up are off. The username and password
+are the `admin_user` and `admin_password` keys in Secrets Manager
+`agribridge/grafana`. Prometheus has no Ingress. The app is
+https://production.agribridge.deuces.dev.
+
+Removing a Helm release from `modules/platform` uninstalls it on the next
+`terraform apply -var install_platform=true`. Leave the address in state so
+Terraform can destroy it. `install_platform` has to stay true on that apply.
+The default is false, and a false value drops the whole platform module for
+that run.
 
 Deploy jobs run `kops export kubeconfig --admin`. The admin credential is in
 the kOps state bucket. The GitHub role can read that bucket. That is
@@ -53,11 +64,16 @@ That creates the zone and the kOps buckets, asks you to delegate DNS, then:
 
 ```sh
 ./scripts/render-kops-terraform.sh
-terraform apply -var install_platform=false
+terraform -chdir=terraform apply -var install_platform=false
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
-kops validate cluster --wait 15m
-terraform apply -var install_platform=true
+kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
+terraform -chdir=terraform apply -var install_platform=true
 ```
+
+If validate times out because a resolver cached `NXDOMAIN` for
+`api.k8s.agribridge.deuces.dev` while DNS was propagating, wait and run
+validate again, then run the `install_platform=true` apply. The details are
+in [docs/SETUP.md](../docs/SETUP.md).
 
 `render-kops-terraform.sh` runs `kops update cluster --target=terraform` and
 then `scripts/patch_kops_terraform.py`. The patch points the launch templates
@@ -73,9 +89,30 @@ they are already in the state file, leave them there. If they exist in AWS
 and not in state, import them:
 
 ```sh
-terraform import aws_s3_bucket.kops_state kops-state-607
-terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
+terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
+terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
 ```
+
+`scripts/apply-environment.sh` imports the zone, the two kOps buckets, and the
+GitHub settings. It does not import an ACM certificate or the backup bucket
+that already exist in the account. Adopt those before apply, and only when
+they are missing from state:
+
+```sh
+CERT_ARN=$(aws acm list-certificates --region us-east-1 \
+  --query "CertificateSummaryList[?DomainName=='agribridge.deuces.dev'].CertificateArn | [0]" \
+  --output text)
+if [ -n "$CERT_ARN" ] && [ "$CERT_ARN" != "None" ]; then
+  terraform -chdir=terraform import aws_acm_certificate.app "$CERT_ARN"
+fi
+terraform -chdir=terraform import aws_s3_bucket.backups agribridge-backups-237258628535
+```
+
+The backup bucket name is `agribridge-backups-` plus the account id, unless
+`backup_bucket` is set. This account's bucket is
+`agribridge-backups-237258628535`. Skip an import when the object is already
+in state, or when `list-certificates` returns `None`. Skip the bucket import
+when that bucket is not in the account yet.
 
 The zone used to be a data source. Remove that and import the zone. The
 commands are in [docs/SETUP.md](../docs/SETUP.md). The Terraform state bucket
