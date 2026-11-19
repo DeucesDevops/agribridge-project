@@ -19,6 +19,8 @@ on AWS, with a short GitHub Actions pipeline that deploys QA and then production
 
 ![AgriBridge architecture](docs/images/agribridge-architecture.jpg)
 
+The diagram is the delivery path. kOps renders the cluster into Terraform, and Terraform creates it.
+
 A request reaches the API like this. A browser opens the QA or production
 hostname. Route 53 sends it to one Application Load Balancer. TLS is the ACM
 certificate. The load balancer sends traffic to the web pod, which serves the
@@ -39,13 +41,17 @@ On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
 waits for the `production` GitHub environment, then installs the same tag.
 Pull requests and pushes to `dev` stop after the scans. They do not push or deploy.
 
-kOps builds the cluster from [`kops/cluster.yaml`](kops/cluster.yaml): the VPC,
-the EC2 nodes, the EBS CSI driver, cert-manager, the AWS Load Balancer
-Controller, and the service-account OIDC issuer. One Terraform root creates the
-GitHub OIDC role, the ACM certificate, the Secrets Manager secrets, and the
-IRSA roles for External Secrets and ExternalDNS. External Secrets copies
-`PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD` into each namespace. The role
-trust uses the kOps issuer and the audience `amazonaws.com`.
+kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) into
+Terraform, and `terraform apply` creates it: the VPC, the EC2 nodes, the EBS
+CSI driver, the AWS Load Balancer Controller, and the service-account issuer.
+The same root creates the public DNS zone, the certificate, the Secrets
+Manager secrets, the backup bucket and the IRSA roles for External Secrets,
+ExternalDNS and the database backup. A second apply installs External Secrets,
+ExternalDNS and the monitoring charts. External Secrets copies `PGPASSWORD`,
+`JWT_SECRET`, and `SEED_PASSWORD` into each namespace. The role trust uses the
+kOps issuer and the audience `amazonaws.com`. Production runs a daily
+`pg_dump` to S3. Grafana is at `https://grafana.<zone>` and asks for the admin
+password.
 
 Prometheus scrapes the API. Promtail ships container logs to Loki. Grafana
 reads Prometheus, Loki, and Tempo. The API does not emit traces yet, so Tempo
@@ -58,19 +64,18 @@ is installed and empty.
 | Data | PostgreSQL and Redis, one volume per namespace |
 | Local | Docker Compose |
 | Chart | `helm/agribridge` with QA and production values |
-| Cluster | kOps on EC2, `kops/cluster.yaml` |
-| AWS around the cluster | `terraform/`: GitHub OIDC role, ACM, Secrets Manager, IRSA |
+| Cluster | kOps, rendered to Terraform in `terraform/kops` |
+| AWS around the cluster | `terraform/`: zone, certificate, secrets, backup bucket, IRSA, platform charts |
 | Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
 | Traffic | Route 53 and ACM to the ALB, then the web Service |
 | Secrets | Secrets Manager through External Secrets |
 | Observability | Prometheus, Grafana, Loki, Promtail, Tempo |
 
 The repository does not include Argo CD, an NGINX ingress or a Network Load
-Balancer, Fluent Bit or CloudWatch logs, database backup jobs, composite
-actions, custom verification scripts, or separate Terraform roots. The
-environment name is QA, not staging. Build the cloud environment in the order
-in [docs/SETUP.md](docs/SETUP.md). The longer explanation is
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Balancer, Fluent Bit or CloudWatch logs, composite actions, or separate
+Terraform roots. The environment name is QA, not staging. Build the cloud
+environment in the order in [docs/SETUP.md](docs/SETUP.md). The longer
+explanation is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 
@@ -132,10 +137,11 @@ builds both images, writes a SBOM, and pushes them to Docker Hub. It then
 installs the Helm chart in QA. Production waits for a reviewer on the
 `production` environment and installs the same image tag.
 
-kOps creates the cluster, including the AWS Load Balancer Controller and the
-service-account issuer. Terraform creates the state bucket, the issuer bucket,
-the certificate and the IAM roles. Images are published to Docker Hub. The
-exact commands are in [docs/SETUP.md](docs/SETUP.md).
+kOps renders the cluster and Terraform creates it, the zone, the certificate,
+the IAM roles and the platform charts. `scripts/bootstrap-state.sh` creates
+the Terraform state bucket, which Terraform needs before it can start. The
+kOps state bucket is separate and is managed by Terraform. Images are
+published to Docker Hub. The exact commands are in [docs/SETUP.md](docs/SETUP.md).
 
 | Guide | Contents |
 |---|---|
@@ -150,9 +156,10 @@ exact commands are in [docs/SETUP.md](docs/SETUP.md).
 |---|---|
 | `frontend/`, `api/` | Application source and tests |
 | `.github/workflows/cicd.yaml` | The only delivery workflow |
-| `kops/` | kOps cluster manifest |
-| `terraform/` | Route 53 records, ACM, secrets and IAM |
-| `helm/agribridge/` | Application chart |
+| `kops/` | kOps cluster spec |
+| `terraform/` | Rendered kOps cluster, DNS, secrets, backup bucket, IAM, platform charts |
+| `helm/agribridge/` | Application chart, including the production backup |
 | `platform/` | Storage class and observability Helm values |
+| `scripts/` | State bucket, apply, restore and teardown |
 | `sonarqube/` | Optional local SonarQube |
 | `docs/` | Setup, pipeline and architecture |

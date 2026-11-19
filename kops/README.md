@@ -1,28 +1,19 @@
 # kOps cluster
 
-`cluster.yaml` is the cluster. kOps creates the VPC, the control plane, the
-worker nodes, the AWS Load Balancer Controller, the EBS CSI driver, cert-manager
-and the service-account issuer.
+`cluster.yaml` is the cluster spec. kOps 1.36.2 turns it into Terraform with
+`scripts/render-kops-terraform.sh`, and `terraform apply` creates the VPC, the
+instances and the IAM. The state bucket is `s3://kops-state-607`. The
+service-account issuer is published to `s3://agribridge-oidc-237258628535`.
 
-The issuer bucket and the state bucket are created by Terraform. Their names in
-this file must match `discovery_bucket` and `kops_state_bucket`.
+The control plane is one `t3.medium`. The workers are two `t3.large` nodes,
+which is enough for the monitoring stack. `sshAccess` is empty, and the
+launch templates have no SSH key.
 
 ```sh
 export KOPS_STATE_STORE=s3://kops-state-607
-export CLUSTER_NAME=k8s.agribridge.deuces.dev
-
-# New cluster
-kops create -f kops/cluster.yaml
-kops update cluster --name "$CLUSTER_NAME" --yes --admin
-
-# Cluster that already exists
-kops replace -f kops/cluster.yaml
-kops update cluster --name "$CLUSTER_NAME" --yes
-
-kops validate cluster --name "$CLUSTER_NAME" --wait 15m
-kops export kubeconfig --admin --name "$CLUSTER_NAME"
+export KOPS_CLUSTER_NAME=k8s.agribridge.deuces.dev
+./scripts/render-kops-terraform.sh
 ```
 
-Use kOps 1.36.2. The cluster Kubernetes version is 1.36.6. The full sequence,
-including the public discovery bucket and the second Terraform apply, is
-[docs/SETUP.md](../docs/SETUP.md).
+Use kOps 1.36.2. The cluster Kubernetes version is 1.36.6. The full sequence
+is [docs/SETUP.md](../docs/SETUP.md).

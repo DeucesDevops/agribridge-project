@@ -1,0 +1,109 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-backup
+  {{- if .Values.backup.roleArn }}
+  annotations:
+    eks.amazonaws.com/role-arn: {{ .Values.backup.roleArn | quote }}
+  {{- end }}
+automountServiceAccountToken: true
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-postgres-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          serviceAccountName: {{ .Release.Name }}-backup
+          automountServiceAccountToken: true
+          restartPolicy: OnFailure
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              image: {{ .Values.postgres.image }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsUser: 999
+                runAsGroup: 999
+                capabilities:
+                  drop: ["ALL"]
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  pg_dump --host "$PGHOST" --username "$PGUSER" --dbname "$PGDATABASE" --clean --if-exists --no-owner --no-privileges --file /backup/dump.sql
+              env:
+                - name: PGHOST
+                  value: {{ .Release.Name }}-postgres-0.{{ .Release.Name }}-postgres
+                - name: PGUSER
+                  value: agribridge
+                - name: PGDATABASE
+                  value: agribridge
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Release.Name }}-runtime
+                      key: PGPASSWORD
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              volumeMounts:
+                - name: dump
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: {{ .Values.backup.image }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  dest="s3://${BUCKET}/${PREFIX}/${stamp}.sql"
+                  aws s3 cp /backup/dump.sql "$dest"
+                  aws s3 cp /backup/dump.sql "s3://${BUCKET}/${PREFIX}/latest.sql"
+                  echo "Wrote ${dest}"
+              env:
+                - name: BUCKET
+                  value: {{ .Values.backup.bucket | quote }}
+                - name: PREFIX
+                  value: {{ .Values.backup.prefix | quote }}
+                - name: HOME
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+              volumeMounts:
+                - name: dump
+                  mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: dump
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}
+{{- end }}

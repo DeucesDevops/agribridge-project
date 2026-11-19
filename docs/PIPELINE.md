@@ -5,7 +5,7 @@ Jobs run in this order. A failure stops everything after it.
 
 | Job | What it does |
 |---|---|
-| Lint and test | ESLint, unit tests, coverage, and API tests against PostgreSQL |
+| Lint and test | ESLint, unit tests, coverage, API tests against PostgreSQL, and the JUnit report |
 | Gitleaks | Scans the Git history for secrets |
 | SonarQube | Quality gate on `main`, only when the token and URL are set. Otherwise the job succeeds and says it was skipped |
 | Trivy filesystem scan | Fails on high or critical findings in `api/` and `frontend/` |
@@ -18,7 +18,7 @@ Pull requests and pushes to `dev` run through the image scan. They do not push
 or deploy. A push to `main` pushes and deploys only after `AWS_ROLE_ARN` is set.
 
 Checkov runs a short starter list in [`.github/checkov.yaml`](../.github/checkov.yaml).
-It scans the Terraform in this repository, not the resources kOps creates.
+It scans the Terraform in this repository.
 
 ## GitHub settings
 
@@ -30,13 +30,18 @@ Create these under **Settings → Secrets and variables → Actions**.
 | Secret | `DOCKERHUB_TOKEN` | To push | Docker Hub access token with write access to those repositories |
 | Variable | `API_IMAGE_REPOSITORY` | No | `docker.io/macroni607/agribridge-api` when unset |
 | Variable | `WEB_IMAGE_REPOSITORY` | No | `docker.io/macroni607/agribridge-web` when unset |
-| Variable | `AWS_ROLE_ARN` | To deploy | Terraform output `github_actions_role_arn` |
-| Variable | `AWS_REGION` | No | `us-east-1` when unset |
-| Variable | `KOPS_STATE_STORE` | No | `s3://kops-state-607` when unset |
-| Variable | `KOPS_CLUSTER_NAME` | No | `k8s.agribridge.deuces.dev` when unset |
-| Variable | `ACM_CERTIFICATE_ARN` | For deploy | Terraform output `certificate_arn` |
-| Variable | `QA_URL` | No | Shown on the QA deployment, for example `https://qa.agribridge.deuces.dev` |
-| Variable | `PRODUCTION_URL` | No | Shown on the production deployment |
+| Variable | `AWS_ROLE_ARN` | To deploy | Terraform writes this |
+| Variable | `AWS_REGION` | No | Terraform writes `us-east-1`. The workflow uses that when the variable is missing |
+| Variable | `KOPS_STATE_STORE` | No | Terraform writes `s3://kops-state-607` |
+| Variable | `KOPS_CLUSTER_NAME` | No | Terraform writes `k8s.agribridge.deuces.dev` |
+| Variable | `ZONE_NAME` | No | Terraform writes the zone. CI builds the hostnames from it |
+| Variable | `ACM_CERTIFICATE_ARN` | For deploy | Terraform writes this |
+| Variable | `BACKUP_BUCKET` | For production | Terraform writes this |
+| Variable | `BACKUP_ROLE_PRODUCTION` | For production | Terraform writes this |
+| Variable | `BACKUP_ROLE_QA` | No | Terraform writes this. QA backup stays off unless the values file enables it |
+| Variable | `QA_URL` | No | Terraform writes `https://qa.<zone>` |
+| Variable | `PRODUCTION_URL` | No | Terraform writes `https://production.<zone>` |
+| Variable | `GRAFANA_URL` | No | Terraform writes `https://grafana.<zone>` |
 | Variable | `SONAR_HOST_URL` | No | HTTPS URL of SonarQube. The job skips when this is empty |
 | Secret | `SONAR_TOKEN` | No | SonarQube project token. The job skips when this is empty |
 
@@ -45,7 +50,13 @@ push uses the Docker Hub token and does not need AWS. The default repositories
 are the ones this project published before: `docker.io/macroni607/agribridge-api`
 and `docker.io/macroni607/agribridge-web`. Set the two repository variables
 when the Docker Hub user is different. The repositories need to be public so
-the kOps nodes can pull them without an image pull secret.
+the nodes can pull them without an image pull secret.
+
+The lint job uploads `api/reports/junit-unit.xml`,
+`api/reports/junit-integration.xml` and `frontend/reports/junit.xml` as the
+`junit` artifact, writes a summary of failures on the job, and publishes the
+same files to the Actions test report. A failed test still fails the job.
+The report step does not decide that.
 
 ## Environments
 
@@ -60,5 +71,6 @@ GitHub creates an environment automatically the first time a job uses it, and
 that automatic environment has no reviewers. Create `production` and add a
 required reviewer first, or the first promotion will not wait.
 
-The deploy role can read the kOps state bucket so it can run
-`kops export kubeconfig`. Treat that role as cluster-admin access.
+The deploy role can read the kOps state bucket. `kops export kubeconfig --admin`
+uses that to write a kubeconfig, which is what `helm upgrade` needs. The
+admin key is in the state bucket, so treat the role as cluster-admin access.

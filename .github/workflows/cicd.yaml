@@ -7,7 +7,7 @@
 #
 # SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
 # Push runs on main when the Docker Hub secrets are set.
-# Deploy also needs AWS_ROLE_ARN so the job can read the kOps state store.
+# Deploy assumes AWS_ROLE_ARN, which Terraform writes, and reads the kOps state store.
 # Production waits on the GitHub environment named "production".
 
 name: CI/CD
@@ -31,7 +31,11 @@ env:
   AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
   KOPS_STATE_STORE: ${{ vars.KOPS_STATE_STORE || 's3://kops-state-607' }}
   KOPS_CLUSTER_NAME: ${{ vars.KOPS_CLUSTER_NAME || 'k8s.agribridge.deuces.dev' }}
+  ZONE_NAME: ${{ vars.ZONE_NAME || 'agribridge.deuces.dev' }}
   ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+  BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+  BACKUP_ROLE_QA: ${{ vars.BACKUP_ROLE_QA }}
+  BACKUP_ROLE_PRODUCTION: ${{ vars.BACKUP_ROLE_PRODUCTION }}
   API_IMAGE_REPOSITORY: ${{ vars.API_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-api' }}
   WEB_IMAGE_REPOSITORY: ${{ vars.WEB_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-web' }}
   IMAGE_TAG: ${{ github.sha }}
@@ -41,6 +45,10 @@ jobs:
     name: Lint and test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     services:
       postgres:
         image: postgres:16.11-bookworm
@@ -76,10 +84,33 @@ jobs:
           npm run lint --prefix frontend -- --max-warnings=0
       - name: Unit tests and coverage
         run: |
-          npm run test:coverage --prefix api
-          npm run test:coverage --prefix frontend
+          JUNIT_FILE=reports/junit-unit.xml npm run test:coverage --prefix api
+          JUNIT_FILE=reports/junit.xml npm run test:coverage --prefix frontend
       - name: API integration tests
-        run: npm run test:integration --prefix api
+        run: JUNIT_FILE=reports/junit-integration.xml npm run test:integration --prefix api
+      - name: Summarise test results
+        if: always()
+        run: python3 scripts/junit_summary.py api/reports frontend/reports >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: API and web tests
+          path: |
+            api/reports/junit-*.xml
+            frontend/reports/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+          fail-on-empty: false
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit
+          path: |
+            api/reports/junit-*.xml
+            frontend/reports/junit.xml
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: coverage-api
@@ -312,7 +343,7 @@ jobs:
             echo "web_image=${WEB_IMAGE_REPOSITORY}"
           } >> "${GITHUB_OUTPUT}"
           if [ -z "${AWS_ROLE_ARN}" ]; then
-            echo "Images are on Docker Hub. Set AWS_ROLE_ARN before the cluster deploy can run."
+            echo "Images are on Docker Hub. Deploy waits until Terraform has published AWS_ROLE_ARN."
           fi
 
   deploy-qa:
@@ -342,7 +373,7 @@ jobs:
       - name: Deploy the QA release
         run: |
           if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
-            echo "Set ACM_CERTIFICATE_ARN to the terraform output certificate_arn."
+            echo "ACM_CERTIFICATE_ARN is empty. Terraform publishes it. Run the apply in docs/SETUP.md."
             exit 1
           fi
           kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
@@ -357,7 +388,11 @@ jobs:
             --set-string "api.tag=${IMAGE_TAG}" \
             --set-string "web.repository=${WEB_IMAGE}" \
             --set-string "web.tag=${IMAGE_TAG}" \
+            --set-string "hostname=qa.${ZONE_NAME}" \
+            --set-string "region=${AWS_REGION}" \
             --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
+            --set-string "backup.bucket=${BACKUP_BUCKET}" \
+            --set-string "backup.roleArn=${BACKUP_ROLE_QA}" \
             --wait \
             --timeout 10m
         env:
@@ -390,8 +425,8 @@ jobs:
           sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
       - name: Deploy the production release
         run: |
-          if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
-            echo "Set ACM_CERTIFICATE_ARN to the terraform output certificate_arn."
+          if [ -z "${ACM_CERTIFICATE_ARN}" ] || [ -z "${BACKUP_BUCKET}" ] || [ -z "${BACKUP_ROLE_PRODUCTION}" ]; then
+            echo "ACM_CERTIFICATE_ARN, BACKUP_BUCKET or BACKUP_ROLE_PRODUCTION is empty. Terraform publishes them. Run the apply in docs/SETUP.md."
             exit 1
           fi
           kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
@@ -406,7 +441,11 @@ jobs:
             --set-string "api.tag=${IMAGE_TAG}" \
             --set-string "web.repository=${WEB_IMAGE}" \
             --set-string "web.tag=${IMAGE_TAG}" \
+            --set-string "hostname=production.${ZONE_NAME}" \
+            --set-string "region=${AWS_REGION}" \
             --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
+            --set-string "backup.bucket=${BACKUP_BUCKET}" \
+            --set-string "backup.roleArn=${BACKUP_ROLE_PRODUCTION}" \
             --wait \
             --timeout 10m
         env:
