@@ -17,7 +17,7 @@ Hooks:
 - null
 - null
 KeypairIDs:
-  kubernetes-ca: "7709876620497350588282919962"
+  kubernetes-ca: "7709887492389739811093242170"
 KubeProxy:
   clusterCIDR: 100.96.0.0/11
   cpuRequest: 100m

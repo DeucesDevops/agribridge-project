@@ -9,10 +9,6 @@ NODEUP_URL_ARM64=https://artifacts.k8s.io/binaries/kops/1.36.2/linux/arm64/nodeu
 NODEUP_HASH_ARM64=b9f8b332b4e8ed409b8976a88b3440b49eea4508ff0cda86a23765626d4602fa
 
 export AWS_REGION=us-east-1
-export S3_ACCESS_KEY_ID=test
-export S3_ENDPOINT=http://127.0.0.1:4566
-export S3_REGION=us-east-1
-export S3_SECRET_ACCESS_KEY=test
 
 
 
@@ -130,7 +126,7 @@ ClusterName: k8s.agribridge.deuces.dev
 ConfigBase: s3://kops-state-607/k8s.agribridge.deuces.dev
 InstanceGroupName: control-plane-us-east-1a
 InstanceGroupRole: ControlPlane
-NodeupConfigHash: wUIujGaoknIoDor0i5D+e9C7uUhHYtxifQbavLzR2Nk=
+NodeupConfigHash: JP4IPJU1Vz4kzsNVBaY6nWOTaxi7JGdhmV+WSvHySQk=
 
 __EOF_KUBE_ENV
 
