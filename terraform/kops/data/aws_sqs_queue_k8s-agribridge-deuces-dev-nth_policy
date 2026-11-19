@@ -1,0 +1,16 @@
+{
+  "Statement": [
+    {
+      "Action": "sqs:SendMessage",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "events.amazonaws.com",
+          "sqs.amazonaws.com"
+        ]
+      },
+      "Resource": "arn:aws:sqs:us-east-1:237258628535:k8s-agribridge-deuces-dev-nth"
+    }
+  ],
+  "Version": "2012-10-17"
+}

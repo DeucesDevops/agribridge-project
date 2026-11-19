@@ -35,3 +35,22 @@ resource "aws_secretsmanager_secret_version" "app" {
     for key in local.secret_keys : key => random_password.app["${each.key}-${key}"].result
   })
 }
+
+resource "random_password" "grafana" {
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "grafana" {
+  name                    = "agribridge/grafana"
+  kms_key_id              = aws_kms_key.secrets.arn
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "grafana" {
+  secret_id = aws_secretsmanager_secret.grafana.id
+  secret_string = jsonencode({
+    admin_user     = "admin"
+    admin_password = random_password.grafana.result
+  })
+}

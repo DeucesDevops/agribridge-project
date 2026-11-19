@@ -1,10 +1,15 @@
 # Setup
 
 Build the project in this order. Each stage has a check you can run before
-the next one. Commands assume the repository root and `us-east-1`.
+the next one. Commands assume the repository root, `us-east-1`, and kOps 1.36.2.
 
 Install Terraform 1.14.6, kOps 1.36.2, kubectl 1.36.6, Helm 3.19, the AWS CLI
-and Docker before you start.
+and Docker before you start. Nothing in this setup opens an SSH session.
+`sshAccess` in `kops/cluster.yaml` is empty, and the launch templates have no
+SSH key.
+
+`scripts/apply-environment.sh` runs stages 2 and 3. The commands below are
+the same steps, written out so each one can be run on its own.
 
 ## Stage 1. Run the app locally
 
@@ -16,186 +21,198 @@ docker compose up --build -d --wait
 Open http://localhost:8080 and sign in with a demo account from the root README.
 `docker compose down` stops the stack and keeps the database volume.
 
-## Stage 2. Prepare AWS by hand
+## Stage 2. Create the Terraform state bucket
 
-These objects have to exist before Terraform or kOps can run.
-
-1. A public Route 53 hosted zone for `agribridge.deuces.dev` (or the zone you
-   set as `zone_name`). At the registrar, delegate the subdomain to the four
-   name servers Route 53 shows for that zone. Terraform looks the zone up. It
-   does not create it.
-2. An S3 bucket for Terraform state, for example `agribridge-tfstate-<account-id>`.
-   Enable versioning, default encryption and Block Public Access. This bucket
-   is not managed by Terraform, because Terraform needs it in order to start.
-
-   ```sh
-   aws s3api create-bucket --bucket agribridge-tfstate-ACCOUNT --region us-east-1
-   aws s3api put-bucket-versioning --bucket agribridge-tfstate-ACCOUNT \
-     --versioning-configuration Status=Enabled
-   aws s3api put-public-access-block --bucket agribridge-tfstate-ACCOUNT \
-     --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
-   ```
-
-3. Account-level S3 Block Public Access must allow a public bucket policy on
-   the OIDC discovery bucket. kOps writes its service-account signing keys
-   there, and AWS reads them without credentials. You can keep ACLs blocked.
-   If the account setting blocks all public policies, the discovery bucket
-   policy in stage 3 will be rejected.
-
-Copy `terraform/backend.hcl.example` to `terraform/backend.hcl` and set the
-state bucket name. The key stays `agribridge/terraform.tfstate`.
-
-If this account already has `kops-state-607` or
-`agribridge-oidc-237258628535`, import them after `terraform init` instead of
-letting Terraform try to create them again:
+This is the one AWS object Terraform does not create. Terraform stores its
+own state there, so the bucket has to exist before `terraform init`. It is
+not the kOps state bucket.
 
 ```sh
-terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
-terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
+export GITHUB_TOKEN=...   # classic repo scope, or fine-grained Actions + Administration write
+./scripts/bootstrap-state.sh
 ```
 
-A new account should change `kops_state_bucket`, `discovery_bucket`, and the
-matching fields in `kops/cluster.yaml` (`configBase` and `discoveryStore`)
-before the first apply. Bucket names in the manifest and in Terraform must be
-the same, and the discovery bucket name cannot contain dots.
+The script creates `agribridge-tfstate-<account-id>` with versioning,
+encryption and Block Public Access, and writes `terraform/backend.hcl` when
+that file is missing. The existing bucket for this account is
+`agribridge-tfstate-237258628535`. Leave it. The script sees that it is
+already there.
 
-## Stage 3. Terraform, first apply
+`GITHUB_TOKEN` is a credential, in the same way the AWS credentials are.
+Terraform uses it to publish Actions variables. It is not committed.
+
+## Stage 3. Terraform and the kOps cluster
+
+The cluster spec is `kops/cluster.yaml`: name `k8s.agribridge.deuces.dev`,
+state store `s3://kops-state-607`, issuer bucket
+`agribridge-oidc-237258628535`. One `t3.medium` control plane and two
+`t3.large` workers. kOps 1.36.2 renders that spec to `terraform/kops` with
+`kops update cluster --target=terraform`. `terraform apply` creates the VPC,
+the instances, the security groups and the IAM, and uploads the node
+configuration into the state bucket.
+
+The render also writes the cluster certificates into the state bucket. Those
+certificates and the Terraform have to come from the same run, so the apply
+script refreshes `terraform/kops` before it applies. Commit the refreshed
+files when the spec changes.
+
+### Fresh account
+
+```sh
+export GITHUB_TOKEN=...
+export AWS_REGION=us-east-1
+export KOPS_STATE_STORE=s3://kops-state-607
+./scripts/apply-environment.sh
+```
+
+The first run creates the public zone `agribridge.deuces.dev`, the kOps
+buckets, and prints the zone's name servers. Give those four servers to the
+registrar that hosts `deuces.dev`. Route 53 cannot change that parent. When
+`dig NS agribridge.deuces.dev` returns the same servers, run the script again.
+
+The second run does this:
+
+```sh
+./scripts/render-kops-terraform.sh
+terraform -chdir=terraform apply -var install_platform=false
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
+kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
+terraform -chdir=terraform apply -var install_platform=true
+```
+
+The first apply creates the certificate, the secrets, the backup bucket, the
+GitHub variables, and the cluster. The second apply installs External Secrets,
+ExternalDNS and the monitoring charts. It reads the kubeconfig from
+`kops export kubeconfig --admin`. That admin credential is stored in the kOps
+state bucket. The GitHub Actions role can read that bucket, which is why the
+deploy job can do the same export. Treat the role as cluster-admin.
+
+`install_platform` defaults to false. A plain `terraform apply` builds the
+AWS resources and leaves the charts alone.
+
+### Existing account
+
+State already lives in `agribridge-tfstate-237258628535` under
+`agribridge/terraform.tfstate`. The zone `agribridge.deuces.dev`, the bucket
+`kops-state-607` and the bucket `agribridge-oidc-237258628535` already exist
+and stay under Terraform. The script imports a bucket or the zone only when
+it is in AWS and not yet in state. It does not remove them from state.
+
+```sh
+export GITHUB_TOKEN=...
+export KOPS_STATE_STORE=s3://kops-state-607
+./scripts/apply-environment.sh
+```
+
+The same imports by hand, after `terraform init`:
 
 ```sh
 terraform -chdir=terraform init -backend-config=backend.hcl
-# The validation records depend on the certificate, so create it first.
-terraform -chdir=terraform apply -target=aws_acm_certificate.app
-terraform -chdir=terraform apply
+
+# Only if these are not already in the state. Skip an address Terraform cannot find.
+terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
+terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
+
+# The zone used to be a data source. Adopt the real zone.
+terraform -chdir=terraform state rm data.aws_route53_zone.app
+ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name agribridge.deuces.dev \
+  --query "HostedZones[?Name=='agribridge.deuces.dev.'].Id | [0]" --output text)
+terraform -chdir=terraform import aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
 ```
 
-This creates the kOps state bucket, the discovery bucket, the QA and production
-secrets, the ACM certificate and the GitHub Actions role. Container images are
-pushed to Docker Hub, not to a registry in this account.
-It does not create the External Secrets or ExternalDNS roles yet.
-
-Check the certificate:
+If External Secrets and ExternalDNS were created with `attach_irsa=true`,
+move them off the `[0]` address:
 
 ```sh
-terraform -chdir=terraform output certificate_arn
+terraform -chdir=terraform state mv 'aws_iam_role.external_secrets[0]' aws_iam_role.external_secrets
+terraform -chdir=terraform state mv 'aws_iam_role_policy.external_secrets[0]' aws_iam_role_policy.external_secrets
+terraform -chdir=terraform state mv 'aws_iam_role.external_dns[0]' aws_iam_role.external_dns
+terraform -chdir=terraform state mv 'aws_iam_role_policy.external_dns[0]' aws_iam_role_policy.external_dns
 ```
 
-The value is empty until DNS validation finishes. Wait, then run
-`terraform apply` again if the output is still unknown. `dig` should show the
-validation records in the hosted zone.
-
-## Stage 4. Create or update the kOps cluster
+There is no cluster to import. The previous machines are gone. Terraform
+creates them again from `terraform/kops`.
 
 ```sh
-export AWS_REGION=us-east-1
-export KOPS_STATE_STORE="$(terraform -chdir=terraform output -raw kops_state_store)"
-export CLUSTER_NAME="$(terraform -chdir=terraform output -raw cluster_name)"
-```
-
-New cluster:
-
-```sh
-kops create -f kops/cluster.yaml
-kops update cluster --name "$CLUSTER_NAME" --yes --admin
-```
-
-Cluster that is already in the state store:
-
-```sh
-kops replace -f kops/cluster.yaml
-kops update cluster --name "$CLUSTER_NAME" --yes
-```
-
-`kops update cluster` without `--yes` prints the change and does not apply it.
-Read that diff. The worker instance groups are `t3.large` so the monitoring
-stack can schedule. The API load balancer allows `0.0.0.0/0` so GitHub-hosted
-runners can deploy. Authentication is still required. Replace that CIDR in
-`kops/cluster.yaml` if you only want a fixed admin network, and deploy from
-that network instead.
-
-```sh
-kops validate cluster --name "$CLUSTER_NAME" --wait 15m
-kops export kubeconfig --admin --name "$CLUSTER_NAME"
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 kubectl get nodes
 ```
 
-kOps creates the OIDC provider, the AWS Load Balancer Controller and the EBS
-CSI driver during this step. If a rebuilt control plane has empty etcd disks
-but the state store still has etcd backups, follow the
-[kOps etcd restore guide](https://kops.sigs.k8s.io/operations/etcd_backup_restore_encryption/)
-before expecting the API to come up.
+## Stage 4. GitHub settings Terraform does not own
 
-## Stage 5. IAM roles for External Secrets and ExternalDNS
+Terraform writes `AWS_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`,
+`KOPS_STATE_STORE`, `KOPS_CLUSTER_NAME`, `ZONE_NAME`, `QA_URL`,
+`PRODUCTION_URL`, `GRAFANA_URL`, `BACKUP_BUCKET`, `BACKUP_ROLE_PRODUCTION`
+and `BACKUP_ROLE_QA`. It also creates the `qa` and `production` environments
+and adds `github_reviewer` (default `DeucesDevops`) as the required reviewer
+on production. `prevent_self_review` is false, so that person can approve
+their own production deployment.
 
-```sh
-terraform -chdir=terraform apply -var attach_irsa=true
-terraform -chdir=terraform output external_secrets_role_arn
-terraform -chdir=terraform output external_dns_role_arn
-```
-
-If apply cannot find the OIDC provider, list the providers and pass the URL
-kOps registered:
-
-```sh
-aws iam list-open-id-connect-providers
-terraform -chdir=terraform apply -var attach_irsa=true \
-  -var oidc_issuer_url=https://THE_ISSUER_HOST
-```
-
-The default issuer is `https://<discovery-bucket>.s3.<region>.amazonaws.com`.
-The trust policy audience is `amazonaws.com`, which is what the kOps
-pod-identity webhook puts on the token.
-
-## Stage 6. Install platform add-ons
-
-Follow [platform/README.md](../platform/README.md). It installs External
-Secrets, ExternalDNS, Loki, Tempo, Prometheus, Grafana and Promtail.
-
-Check the load balancer controller and the secret store:
-
-```sh
-kubectl -n kube-system get deploy -l app.kubernetes.io/name=aws-load-balancer-controller
-kubectl -n external-secrets get pods
-```
-
-The QA demo password is in Secrets Manager. It is not in Git.
-
-```sh
-aws secretsmanager get-secret-value --secret-id agribridge/qa \
-  --query SecretString --output text
-```
-
-Use that `SEED_PASSWORD` with the demo emails after QA is deployed.
-Production does not load demo users.
-
-## Stage 7. Point GitHub at Docker Hub and AWS
-
-Create the secrets, variables and the `qa` and `production` environments listed
-in [PIPELINE.md](PIPELINE.md). Add a required reviewer on `production` before
-the first deploy.
+Create these yourself. They are credentials for systems outside this AWS account.
 
 | Setting | Value |
 |---|---|
 | Secret `DOCKERHUB_USERNAME` | Docker Hub user. The previous repositories belong to `macroni607` |
 | Secret `DOCKERHUB_TOKEN` | Docker Hub access token that can push those repositories |
-| Variable `AWS_ROLE_ARN` | Terraform output `github_actions_role_arn` |
-| Variable `ACM_CERTIFICATE_ARN` | Terraform output `certificate_arn` |
-| Variable `KOPS_STATE_STORE` | Terraform output `kops_state_store` |
-| Variable `KOPS_CLUSTER_NAME` | Terraform output `cluster_name` |
+| Secret `SONAR_TOKEN` | Optional. SonarQube is skipped when this is empty |
+| Variable `SONAR_HOST_URL` | Optional. SonarQube is skipped when this is empty |
 
 `API_IMAGE_REPOSITORY` and `WEB_IMAGE_REPOSITORY` default to
 `docker.io/macroni607/agribridge-api` and `docker.io/macroni607/agribridge-web`.
 Set them when the Docker Hub user is different. Make the repositories public
 so the nodes can pull them.
 
+You can delete an old `CLUSTER_NAME` variable. The workflow reads
+`KOPS_CLUSTER_NAME`.
+
 Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
 scans, builds, pushes both images to Docker Hub, deploys QA, and then waits
-on production.
+on production. Approve the production environment in GitHub. That approval is
+the human gate the pipeline is supposed to have.
 
 QA is `https://qa.<zone>`. Production is `https://production.<zone>`.
-ExternalDNS creates those records from the Ingress. The first certificate
-and load balancer can take a few minutes.
+Grafana is `https://grafana.<zone>`. The user is `admin`. The password is in
+Secrets Manager:
 
-## Stage 8. Roll back or tear down
+```sh
+aws secretsmanager get-secret-value --secret-id agribridge/grafana \
+  --query SecretString --output text
+```
+
+The QA demo password is in `agribridge/qa`, field `SEED_PASSWORD`. Production
+does not load demo users.
+
+## Stage 5. Show a backup and a restore
+
+Production installs a CronJob that runs `pg_dump` at 02:15 UTC and uploads
+the file to `s3://<backup-bucket>/production/`. A copy is also written to
+`production/latest.sql`. Objects expire after 30 days. QA has the same chart
+switch and leaves it off. Set `backup.enabled: true` in `values-qa.yaml` and
+redeploy when you want a QA copy under the `qa/` prefix.
+
+```sh
+./scripts/demo-backup-restore.sh agribridge-production
+```
+
+The script writes a marker row, takes a backup, changes the row, restores
+`production/latest.sql`, and checks the marker is back to the dumped value.
+It scales the API to 0 for the restore and scales it back afterwards.
+
+To restore a named dump:
+
+```sh
+./scripts/restore-postgres.sh agribridge-production production/20261121T021500Z.sql
+```
+
+To take a backup without waiting for 02:15:
+
+```sh
+kubectl -n agribridge-production create job agribridge-backup-now \
+  --from=cronjob/agribridge-postgres-backup
+kubectl -n agribridge-production wait --for=condition=complete job/agribridge-backup-now --timeout=10m
+```
+
+## Stage 6. Roll back or tear down
 
 Roll back an application release without rebuilding the cluster:
 
@@ -206,16 +223,50 @@ helm rollback agribridge REVISION --namespace agribridge-production
 
 Use the same commands in `agribridge-qa`.
 
-Tear down in this order:
+Tear down with `scripts/teardown-environment.sh`. A plain `terraform destroy`
+is the wrong first command. The application Ingress is installed by GitHub
+Actions, so Terraform will delete the load balancer controller while that
+Ingress still exists and the Application Load Balancer will hold the subnets.
+ExternalDNS is set to `upsert-only`, so it does not delete the records it
+created, and the hosted zone then refuses to delete. The kOps state bucket
+and the discovery bucket have `prevent_destroy` set, so a destroy that still
+has them in state stops there on purpose.
+
+The script does this:
 
 ```sh
+export GITHUB_TOKEN=...
+export KOPS_STATE_STORE=s3://kops-state-607
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 helm uninstall agribridge --namespace agribridge-qa
 helm uninstall agribridge --namespace agribridge-production
-kops delete cluster --name "$CLUSTER_NAME" --yes
+terraform -chdir=terraform destroy -var install_platform=true -target=module.platform
+python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform output -raw zone_id)" --apply
+terraform -chdir=terraform state rm aws_s3_bucket.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_versioning.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_server_side_encryption_configuration.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket.discovery
+terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.discovery
+terraform -chdir=terraform state rm aws_s3_bucket_policy.discovery
+terraform -chdir=terraform destroy -var install_platform=false
 ```
 
-`terraform destroy` removes the secrets, certificate and IAM roles.
-It will not delete the kOps state bucket or the discovery bucket, and it will
-not delete the cluster if you skipped `kops delete`. Remove those two buckets
-in the console after the cluster is gone. Delete leftover `qa` and
-`production` DNS records if ExternalDNS leaves them behind.
+`state rm` keeps `kops-state-607` and `agribridge-oidc-237258628535` in the
+account. The Terraform state bucket is also kept. Delete it yourself after
+you no longer need the state:
+
+```sh
+aws s3 rb s3://agribridge-tfstate-237258628535 --force
+```
+
+`route53_cleanup.py` deletes A, AAAA and TXT records and leaves the zone apex
+NS and SOA, plus the ACM validation CNAMEs, for Terraform.
+
+If destroy stops because the platform module is still recorded and the API is
+already gone:
+
+```sh
+terraform -chdir=terraform state rm 'module.platform'
+terraform -chdir=terraform destroy -var install_platform=false
+```

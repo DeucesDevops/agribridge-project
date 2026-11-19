@@ -35,7 +35,6 @@ data "aws_iam_policy_document" "github_assume" {
         "repo:${var.github_repository}:ref:refs/heads/main",
         "repo:${var.github_repository}:environment:qa",
         "repo:${var.github_repository}:environment:production",
-        # GitHub immutable subject format (repo uses use_immutable_subject).
         "${var.github_immutable_subject_prefix}:ref:refs/heads/main",
         "${var.github_immutable_subject_prefix}:environment:qa",
         "${var.github_immutable_subject_prefix}:environment:production",
@@ -77,30 +76,18 @@ resource "aws_iam_role_policy" "github" {
 }
 
 locals {
-  oidc_issuer_url = (
-    var.oidc_issuer_url != ""
-    ? var.oidc_issuer_url
-    : "https://${var.discovery_bucket}.s3.${var.region}.amazonaws.com"
-  )
-  oidc_issuer_host = trimprefix(local.oidc_issuer_url, "https://")
+  oidc_issuer_host = module.kops.iam_openid_connect_provider_issuer
 }
 
-# kOps creates this provider when enableAWSOIDCProvider is true.
-# The audience is amazonaws.com, which is the kOps pod-identity webhook default.
-data "aws_iam_openid_connect_provider" "kops" {
-  count = var.attach_irsa ? 1 : 0
-  url   = local.oidc_issuer_url
-}
-
-data "aws_iam_policy_document" "external_secrets_assume" {
-  count = var.attach_irsa ? 1 : 0
+data "aws_iam_policy_document" "irsa_assume" {
+  for_each = local.irsa_trust
 
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
     principals {
       type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.kops[0].arn]
+      identifiers = [module.kops.iam_openid_connect_provider_arn]
     }
 
     condition {
@@ -112,46 +99,19 @@ data "aws_iam_policy_document" "external_secrets_assume" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_issuer_host}:sub"
-      values   = ["system:serviceaccount:external-secrets:external-secrets"]
-    }
-  }
-}
-
-data "aws_iam_policy_document" "external_dns_assume" {
-  count = var.attach_irsa ? 1 : 0
-
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-
-    principals {
-      type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.kops[0].arn]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_issuer_host}:aud"
-      values   = ["amazonaws.com"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_issuer_host}:sub"
-      values   = ["system:serviceaccount:external-dns:external-dns"]
+      values   = ["system:serviceaccount:${each.value.namespace}:${each.value.service_account}"]
     }
   }
 }
 
 resource "aws_iam_role" "external_secrets" {
-  count              = var.attach_irsa ? 1 : 0
   name               = "agribridge-external-secrets"
-  assume_role_policy = data.aws_iam_policy_document.external_secrets_assume[0].json
+  assume_role_policy = data.aws_iam_policy_document.irsa_assume["external_secrets"].json
 }
 
 resource "aws_iam_role_policy" "external_secrets" {
-  count = var.attach_irsa ? 1 : 0
-  name  = "agribridge-external-secrets"
-  role  = aws_iam_role.external_secrets[0].id
+  name = "agribridge-external-secrets"
+  role = aws_iam_role.external_secrets.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -174,15 +134,13 @@ resource "aws_iam_role_policy" "external_secrets" {
 }
 
 resource "aws_iam_role" "external_dns" {
-  count              = var.attach_irsa ? 1 : 0
   name               = "agribridge-external-dns"
-  assume_role_policy = data.aws_iam_policy_document.external_dns_assume[0].json
+  assume_role_policy = data.aws_iam_policy_document.irsa_assume["external_dns"].json
 }
 
 resource "aws_iam_role_policy" "external_dns" {
-  count = var.attach_irsa ? 1 : 0
-  name  = "agribridge-external-dns"
-  role  = aws_iam_role.external_dns[0].id
+  name = "agribridge-external-dns"
+  role = aws_iam_role.external_dns.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -190,7 +148,7 @@ resource "aws_iam_role_policy" "external_dns" {
       {
         Effect   = "Allow"
         Action   = ["route53:ChangeResourceRecordSets"]
-        Resource = [data.aws_route53_zone.app.arn]
+        Resource = [aws_route53_zone.app.arn]
       },
       {
         Effect = "Allow"
@@ -203,4 +161,42 @@ resource "aws_iam_role_policy" "external_dns" {
       },
     ]
   })
+}
+
+resource "aws_iam_role" "backup_production" {
+  name               = "agribridge-backup-production"
+  assume_role_policy = data.aws_iam_policy_document.irsa_assume["backup_production"].json
+}
+
+resource "aws_iam_role" "backup_qa" {
+  name               = "agribridge-backup-qa"
+  assume_role_policy = data.aws_iam_policy_document.irsa_assume["backup_qa"].json
+}
+
+data "aws_iam_policy_document" "backup" {
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.backups.arn]
+  }
+
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:AbortMultipartUpload",
+    ]
+    resources = ["${aws_s3_bucket.backups.arn}/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "backup_production" {
+  name   = "agribridge-backup-production"
+  role   = aws_iam_role.backup_production.id
+  policy = data.aws_iam_policy_document.backup.json
+}
+
+resource "aws_iam_role_policy" "backup_qa" {
+  name   = "agribridge-backup-qa"
+  role   = aws_iam_role.backup_qa.id
+  policy = data.aws_iam_policy_document.backup.json
 }

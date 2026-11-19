@@ -1,6 +1,5 @@
-data "aws_route53_zone" "app" {
-  name         = var.zone_name
-  private_zone = false
+resource "aws_route53_zone" "app" {
+  name = var.zone_name
 }
 
 resource "aws_acm_certificate" "app" {
@@ -22,7 +21,7 @@ resource "aws_route53_record" "validation" {
     }
   }
 
-  zone_id         = data.aws_route53_zone.app.zone_id
+  zone_id         = aws_route53_zone.app.zone_id
   name            = each.value.name
   type            = each.value.type
   records         = [each.value.record]

@@ -9,7 +9,7 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 60_000,
     reporters: ['default', 'junit'],
-    outputFile: { junit: './reports/junit.xml' },
+    outputFile: { junit: process.env.JUNIT_FILE || './reports/junit.xml' },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
