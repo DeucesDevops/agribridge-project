@@ -8,9 +8,8 @@ locals {
     : var.github_oidc_provider_arn
   )
 
-  # Secret names consumed by the Helm chart. Keep helm/agribridge/values-*.yaml in step with these.
+  # Secret name consumed by the Helm chart. Keep helm/agribridge/values-production.yaml in step with this.
   environments = {
-    qa         = "agribridge/qa"
     production = "agribridge/production"
   }
 
@@ -22,7 +21,6 @@ locals {
     : "agribridge-backups-${data.aws_caller_identity.current.account_id}"
   )
 
-  qa_hostname         = "qa.${var.zone_name}"
   production_hostname = "production.${var.zone_name}"
   grafana_hostname    = "grafana.${var.zone_name}"
 
@@ -39,10 +37,6 @@ locals {
     }
     backup_production = {
       namespace       = "agribridge-production"
-      service_account = "agribridge-backup"
-    }
-    backup_qa = {
-      namespace       = "agribridge-qa"
       service_account = "agribridge-backup"
     }
   }

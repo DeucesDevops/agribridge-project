@@ -25,7 +25,6 @@ check:
 	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py' -v
 	terraform fmt -check -recursive terraform
 	helm lint helm/agribridge
-	helm template agribridge helm/agribridge --namespace agribridge-qa -f helm/agribridge/values-qa.yaml >/dev/null
 	helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml >/dev/null
 
 sonar-up:

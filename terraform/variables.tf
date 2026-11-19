@@ -53,7 +53,7 @@ variable "github_reviewer" {
 }
 
 variable "manage_github" {
-  description = "Publish Actions variables and the qa and production environments. Requires GITHUB_TOKEN."
+  description = "Publish Actions variables and the production environment. Requires GITHUB_TOKEN."
   type        = bool
   default     = true
 }

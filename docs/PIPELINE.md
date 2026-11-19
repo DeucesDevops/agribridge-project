@@ -11,8 +11,7 @@ Jobs run in this order. A failure stops everything after it.
 | Trivy filesystem scan | Fails on high or critical findings in `api/` and `frontend/` |
 | Checkov and configuration | `terraform fmt`, `terraform validate`, `helm lint`, then Checkov on Terraform, the rendered chart and both Dockerfiles |
 | Build, scan, SBOM and push | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to Docker Hub on `main` |
-| Deploy QA | `helm upgrade` into `agribridge-qa` |
-| Deploy production | Waits for the `production` environment, then installs the same tag into `agribridge-production` |
+| Deploy production | Waits for the `production` environment, then installs that tag into `agribridge-production` |
 
 Pull requests and pushes to `dev` run through the image scan. They do not push
 or deploy. A push to `main` pushes and deploys only after `AWS_ROLE_ARN` is set.
@@ -38,8 +37,6 @@ Create these under **Settings → Secrets and variables → Actions**.
 | Variable | `ACM_CERTIFICATE_ARN` | For deploy | Terraform writes this |
 | Variable | `BACKUP_BUCKET` | For production | Terraform writes this |
 | Variable | `BACKUP_ROLE_PRODUCTION` | For production | Terraform writes this |
-| Variable | `BACKUP_ROLE_QA` | No | Terraform writes this. QA backup stays off unless the values file enables it |
-| Variable | `QA_URL` | No | Terraform writes `https://qa.<zone>` |
 | Variable | `PRODUCTION_URL` | No | Terraform writes `https://production.<zone>` |
 | Variable | `GRAFANA_URL` | No | Terraform writes `https://grafana.<zone>` |
 | Variable | `SONAR_HOST_URL` | No | HTTPS URL of SonarQube. The job skips when this is empty |
@@ -60,16 +57,16 @@ The report step does not decide that.
 
 ## Environments
 
-Create two environments under **Settings → Environments**.
+Terraform creates one environment, `production`, and adds `github_reviewer`
+as a required reviewer.
 
 | Environment | Reviewers | What it protects |
 |---|---|---|
-| `qa` | None | The QA Helm install. It should start as soon as the images are pushed |
-| `production` | Required reviewer | The production Helm install. Add yourself before the first production deploy |
+| `production` | Required reviewer | The production Helm install. The reviewer has to approve before the job starts |
 
 GitHub creates an environment automatically the first time a job uses it, and
-that automatic environment has no reviewers. Create `production` and add a
-required reviewer first, or the first promotion will not wait.
+that automatic environment has no reviewers. Let Terraform create `production`
+and add the reviewer before the first deploy, or the first deploy will not wait.
 
 The deploy role can read the kOps state bucket. `kops export kubeconfig --admin`
 uses that to write a kubeconfig, which is what `helm upgrade` needs. The
