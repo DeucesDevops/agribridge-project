@@ -2,6 +2,8 @@
 
 ![AgriBridge architecture](images/agribridge-architecture.jpg)
 
+The request path in the diagram is current. The cluster is Amazon EKS, created by Terraform.
+
 ## Application
 
 The web app is React and Vite, served by NGINX. It proxies `/api` to the
@@ -33,20 +35,29 @@ scan and SBOM.
 
 ## Cluster and AWS
 
-kOps creates the cluster from [`kops/cluster.yaml`](../kops/cluster.yaml):
+Terraform creates the cluster. It is Amazon EKS 1.36 in a VPC with two public
+subnets. The managed node group is `t3.large`, the root disks are encrypted,
+and the launch template has no SSH key. The API is public. Callers need an
+EKS access entry. The person who applies Terraform is an admin, and so is the
+GitHub Actions role.
 
-- VPC and EC2 nodes
-- EBS CSI driver
-- cert-manager
-- AWS Load Balancer Controller
-- service-account OIDC issuer, published to the discovery bucket
+EKS is in this root because the cluster, the zone, the certificate and the
+roles then come from one apply. A kOps cluster would keep a second state
+store and a second command. The kOps Terraform target writes a generated tree
+that has to be regenerated with kOps, so the source of the cluster would still
+be kOps.
 
-The Terraform root in `terraform/` does not create the cluster. It creates:
+The same root also creates:
 
-- the GitHub Actions OIDC role, used to read the kOps state store and deploy
-- the ACM certificate for the zone and `*.zone`
-- Secrets Manager secrets `agribridge/qa` and `agribridge/production`
-- IRSA roles for External Secrets and ExternalDNS, after kOps has registered the issuer
+- the public Route 53 zone and the ACM certificate for the zone and `*.zone`
+- the GitHub Actions OIDC role, and it writes that role ARN to GitHub
+- Secrets Manager secrets `agribridge/qa`, `agribridge/production` and `agribridge/grafana`
+- IRSA roles for External Secrets, ExternalDNS, the load balancer controller, the EBS CSI driver and the backup jobs
+- the backup bucket
+- the platform Helm releases, on a second apply, once the API exists
+
+The state bucket is the exception. `scripts/bootstrap-state.sh` creates it,
+because Terraform needs it before the first `init`.
 
 ## Traffic and secrets
 
@@ -56,20 +67,24 @@ attaches the ACM certificate. ExternalDNS creates the records from the Ingress
 host.
 
 External Secrets reads Secrets Manager with an IAM role. The trust policy uses
-the kOps issuer and the audience `amazonaws.com`. The synced secret supplies
-`PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD`.
+the EKS OIDC issuer and the audience `sts.amazonaws.com`. The synced secret
+supplies `PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD`.
+
+Production PostgreSQL is backed up by a CronJob in the application chart. It
+runs `pg_dump` and uploads the file to S3 with its own IRSA role. Restore is
+`scripts/restore-postgres.sh`. QA uses the same switch and leaves it off.
 
 ## Observability
 
 Prometheus scrapes `/metrics` through a ServiceMonitor. Promtail ships
 container logs to Loki. Grafana is configured with Prometheus, Loki, and Tempo
 datasources. The API does not export traces, so Tempo has no application spans
-until a tracer is added. Grafana stays inside the cluster and is opened with
-`kubectl port-forward`.
+until a tracer is added. Grafana is served at `https://grafana.<zone>` on the
+same load balancer. Anonymous access is off. The admin password is in Secrets
+Manager.
 
 ## What this repository does not contain
 
 Argo CD, an NGINX ingress controller, a Network Load Balancer, Fluent Bit,
-CloudWatch Logs, application backup jobs, composite GitHub Actions, custom
-verification scripts, and extra Terraform roots are not part of this design.
-The environment name is QA.
+CloudWatch Logs, composite GitHub Actions, and extra Terraform roots are not
+part of this design. The environment name is QA.

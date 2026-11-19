@@ -7,3 +7,6 @@ web:
   replicas: 1
 config:
   SEED_DEMO_DATA: "true"
+backup:
+  enabled: false
+  prefix: qa

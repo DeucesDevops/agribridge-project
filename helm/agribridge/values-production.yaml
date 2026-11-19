@@ -7,3 +7,6 @@ web:
   replicas: 2
 config:
   SEED_DEMO_DATA: "false"
+backup:
+  enabled: true
+  prefix: production

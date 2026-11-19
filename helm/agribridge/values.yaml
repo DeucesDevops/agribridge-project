@@ -42,5 +42,14 @@ postgres:
   image: postgres:16.11-bookworm
   storageClass: gp3
   size: 20Gi
+# Production values turn the dump on. QA leaves it off.
+# CI sets bucket and roleArn from the GitHub variables Terraform publishes.
+backup:
+  enabled: false
+  schedule: "15 2 * * *"
+  bucket: ""
+  roleArn: ""
+  prefix: ""
+  image: public.ecr.aws/aws-cli/aws-cli:2.31.38
 redis:
   image: redis:7.4.7-alpine

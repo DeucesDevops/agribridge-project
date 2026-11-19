@@ -40,6 +40,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.js'],
+    reporters: ['default', 'junit'],
+    outputFile: { junit: process.env.JUNIT_FILE || './reports/junit.xml' },
     coverage: { provider: 'v8', reporter: ['text', 'lcov'] },
   },
 });
