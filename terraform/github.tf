@@ -8,7 +8,8 @@ locals {
     AWS_ROLE_ARN           = aws_iam_role.github.arn
     AWS_REGION             = var.region
     ACM_CERTIFICATE_ARN    = aws_acm_certificate_validation.app.certificate_arn
-    CLUSTER_NAME           = aws_eks_cluster.this.name
+    KOPS_CLUSTER_NAME      = var.cluster_name
+    KOPS_STATE_STORE       = "s3://${aws_s3_bucket.kops_state.bucket}"
     ZONE_NAME              = var.zone_name
     QA_URL                 = "https://${local.qa_hostname}"
     PRODUCTION_URL         = "https://${local.production_hostname}"

@@ -44,34 +44,28 @@ provider "aws" {
   }
 }
 
+# kOps uses this alias for the objects it writes into the state and discovery buckets.
+provider "aws" {
+  alias  = "files"
+  region = var.region
+}
+
 # GITHUB_TOKEN is read from the environment. It is the credential Terraform
 # uses to publish Actions variables. It is not a copy of an output.
 provider "github" {
   owner = local.github_owner
 }
 
-# These providers are configured for every plan, and Terraform contacts the
-# cluster only when install_platform is true and the platform module is created.
+# These providers are configured for every plan. Terraform reads the kubeconfig
+# only when install_platform is true and the platform module is created.
+# `kops export kubeconfig --admin` writes that file. The admin credential lives
+# in the kOps state bucket, which the deploy role can read.
 provider "kubernetes" {
-  host                   = aws_eks_cluster.this.endpoint
-  cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)
-
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.this.name, "--region", var.region]
-  }
+  config_path = pathexpand(var.kubeconfig_path)
 }
 
 provider "helm" {
   kubernetes {
-    host                   = aws_eks_cluster.this.endpoint
-    cluster_ca_certificate = base64decode(aws_eks_cluster.this.certificate_authority[0].data)
-
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", aws_eks_cluster.this.name, "--region", var.region]
-    }
+    config_path = pathexpand(var.kubeconfig_path)
   }
 }

@@ -1,12 +1,13 @@
 # Platform add-ons
 
-Terraform installs these charts on `terraform apply -var install_platform=true`.
-The values files in this directory are the inputs. Do not install the charts
-by hand.
+kOps installs the AWS Load Balancer Controller, the EBS CSI driver and the
+pod-identity webhook as part of the cluster. Terraform installs the rest on
+`terraform apply -var install_platform=true`, after
+`kops export kubeconfig --admin`. The values files in this directory are the
+inputs. Do not install these charts by hand.
 
 | Release | Chart | Version | Values |
 |---|---|---|---|
-| `aws-load-balancer-controller` | eks/aws-load-balancer-controller | 1.17.1 | set by Terraform: cluster name, VPC, region, IRSA role |
 | `external-secrets` | external-secrets/external-secrets | 2.15.0 | IRSA role |
 | `external-dns` | external-dns/external-dns | 1.23.0 | zone filter, `upsert-only`, IRSA role |
 | `loki` | grafana/loki | 7.6.0 | `loki-values.yaml` |
@@ -15,11 +16,7 @@ by hand.
 | `promtail` | grafana/promtail | 6.17.1 | `promtail-values.yaml` |
 
 `storage-class.yaml` is the `gp3` class. Terraform reads that file and creates
-it. The EBS CSI driver is an EKS add-on with its own IRSA role.
-
-The load balancer controller chart is 1.17.1, which ships controller v2.17.1.
-The IAM policy next to it is the v2.17.1 policy. The Ingress annotations in
-the application chart are the ones that controller understands.
+it. The EBS CSI driver from kOps provisions the volumes.
 
 Grafana is on the same Application Load Balancer as the app, at
 `https://grafana.<zone>`. Anonymous access is off and sign-up is off. The
@@ -34,5 +31,7 @@ The user is `admin`. Prometheus, Loki and Tempo are already Grafana
 datasources. The application chart publishes a ServiceMonitor for the API.
 The API does not send traces, so Tempo stays empty until a tracer is added.
 
-The worker group is `t3.large` with two nodes. If pods stay Pending, raise
-`node_desired_size` and run `terraform apply -var install_platform=true`.
+Workers are `t3.large`, one in each of two zones. If pods stay Pending, raise
+`maxSize` on the node instance groups in `kops/cluster.yaml`, run
+`./scripts/render-kops-terraform.sh`, then
+`terraform apply -var install_platform=true`.

@@ -7,7 +7,7 @@
 #
 # SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
 # Push runs on main when the Docker Hub secrets are set.
-# Deploy assumes AWS_ROLE_ARN, which Terraform writes, and uses EKS.
+# Deploy assumes AWS_ROLE_ARN, which Terraform writes, and reads the kOps state store.
 # Production waits on the GitHub environment named "production".
 
 name: CI/CD
@@ -29,7 +29,8 @@ concurrency:
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
   AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-  CLUSTER_NAME: ${{ vars.CLUSTER_NAME || 'agribridge' }}
+  KOPS_STATE_STORE: ${{ vars.KOPS_STATE_STORE || 's3://kops-state-607' }}
+  KOPS_CLUSTER_NAME: ${{ vars.KOPS_CLUSTER_NAME || 'k8s.agribridge.deuces.dev' }}
   ZONE_NAME: ${{ vars.ZONE_NAME || 'agribridge.deuces.dev' }}
   ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
   BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
@@ -363,17 +364,19 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.19.0
-      - name: Install kubectl
+      - name: Install kubectl and kOps
         run: |
+          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
           curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" /usr/local/bin/kubectl
+          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
       - name: Deploy the QA release
         run: |
           if [ -z "${ACM_CERTIFICATE_ARN}" ]; then
             echo "ACM_CERTIFICATE_ARN is empty. Terraform publishes it. Run the apply in docs/SETUP.md."
             exit 1
           fi
-          aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}" --kubeconfig "${RUNNER_TEMP}/kubeconfig"
+          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
           chmod 600 "${RUNNER_TEMP}/kubeconfig"
           export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
           helm upgrade --install agribridge helm/agribridge \
@@ -414,17 +417,19 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.19.0
-      - name: Install kubectl
+      - name: Install kubectl and kOps
         run: |
+          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
           curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" /usr/local/bin/kubectl
+          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
+          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
       - name: Deploy the production release
         run: |
           if [ -z "${ACM_CERTIFICATE_ARN}" ] || [ -z "${BACKUP_BUCKET}" ] || [ -z "${BACKUP_ROLE_PRODUCTION}" ]; then
             echo "ACM_CERTIFICATE_ARN, BACKUP_BUCKET or BACKUP_ROLE_PRODUCTION is empty. Terraform publishes them. Run the apply in docs/SETUP.md."
             exit 1
           fi
-          aws eks update-kubeconfig --name "${CLUSTER_NAME}" --region "${AWS_REGION}" --kubeconfig "${RUNNER_TEMP}/kubeconfig"
+          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
           chmod 600 "${RUNNER_TEMP}/kubeconfig"
           export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
           helm upgrade --install agribridge helm/agribridge \

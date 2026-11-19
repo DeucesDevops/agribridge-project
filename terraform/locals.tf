@@ -26,8 +26,8 @@ locals {
   production_hostname = "production.${var.zone_name}"
   grafana_hostname    = "grafana.${var.zone_name}"
 
-  # One service account per IRSA role. The audience is sts.amazonaws.com,
-  # which is what EKS puts on a projected service-account token.
+  # kOps pod-identity webhook puts audience amazonaws.com on the token.
+  # The load balancer controller and the EBS driver roles are in the kOps output.
   irsa_trust = {
     external_secrets = {
       namespace       = "external-secrets"
@@ -36,14 +36,6 @@ locals {
     external_dns = {
       namespace       = "external-dns"
       service_account = "external-dns"
-    }
-    load_balancer = {
-      namespace       = "kube-system"
-      service_account = "aws-load-balancer-controller"
-    }
-    ebs_csi = {
-      namespace       = "kube-system"
-      service_account = "ebs-csi-controller-sa"
     }
     backup_production = {
       namespace       = "agribridge-production"

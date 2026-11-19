@@ -3,8 +3,17 @@ output "region" {
 }
 
 output "cluster_name" {
-  description = "Terraform writes this to the GitHub variable CLUSTER_NAME."
-  value       = aws_eks_cluster.this.name
+  description = "Terraform writes this to the GitHub variable KOPS_CLUSTER_NAME."
+  value       = var.cluster_name
+}
+
+output "kops_state_store" {
+  description = "Terraform writes this to the GitHub variable KOPS_STATE_STORE."
+  value       = "s3://${aws_s3_bucket.kops_state.bucket}"
+}
+
+output "kops_oidc_provider_arn" {
+  value = module.kops.iam_openid_connect_provider_arn
 }
 
 output "zone_name" {
@@ -80,5 +89,5 @@ output "external_dns_role_arn" {
 }
 
 output "kubeconfig_command" {
-  value = "aws eks update-kubeconfig --name ${aws_eks_cluster.this.name} --region ${var.region}"
+  value = "kops export kubeconfig --admin --name ${var.cluster_name}"
 }

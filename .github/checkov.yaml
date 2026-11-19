@@ -1,6 +1,7 @@
 # Starter policy. See docs/PIPELINE.md.
 # These checks are blocking. This is not Checkov's full catalog.
-# The backup bucket is private. There is no public discovery bucket in this root.
+# The kOps discovery bucket is world-readable through a bucket policy so AWS can
+# fetch the service-account issuer. That policy is not an object ACL.
 check:
   # Terraform: prevent public bucket ACLs, static provider credentials and
   # unrestricted administrative ingress. OIDC discovery is public by design.

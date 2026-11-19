@@ -2,7 +2,6 @@ locals {
   values_dir = "${path.module}/../../../platform"
 
   chart_version = {
-    load_balancer    = "1.17.1"
     external_secrets = "2.15.0"
     external_dns     = "1.23.0"
     loki             = "7.6.0"
@@ -61,32 +60,6 @@ resource "kubernetes_storage_class_v1" "gp3" {
   parameters             = local.storage_class.parameters
 }
 
-resource "helm_release" "load_balancer" {
-  name             = "aws-load-balancer-controller"
-  repository       = "https://aws.github.io/eks-charts"
-  chart            = "aws-load-balancer-controller"
-  version          = local.chart_version.load_balancer
-  namespace        = "kube-system"
-  create_namespace = false
-  wait             = true
-  atomic           = true
-  timeout          = 600
-
-  values = [yamlencode({
-    clusterName  = var.cluster_name
-    region       = var.region
-    vpcId        = var.vpc_id
-    replicaCount = 1
-    serviceAccount = {
-      create = true
-      name   = "aws-load-balancer-controller"
-      annotations = {
-        "eks.amazonaws.com/role-arn" = var.load_balancer_role_arn
-      }
-    }
-  })]
-}
-
 resource "helm_release" "external_secrets" {
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
@@ -140,7 +113,6 @@ resource "helm_release" "external_dns" {
     }
   })]
 
-  depends_on = [helm_release.load_balancer]
 }
 
 resource "helm_release" "loki" {
@@ -197,7 +169,6 @@ resource "helm_release" "monitoring" {
   }
 
   depends_on = [
-    helm_release.load_balancer,
     helm_release.loki,
     helm_release.tempo,
     kubernetes_storage_class_v1.gp3,

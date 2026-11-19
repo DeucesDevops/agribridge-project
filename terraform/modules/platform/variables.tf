@@ -1,12 +1,4 @@
-variable "cluster_name" {
-  type = string
-}
-
 variable "region" {
-  type = string
-}
-
-variable "vpc_id" {
   type = string
 }
 
@@ -32,9 +24,5 @@ variable "external_secrets_role_arn" {
 }
 
 variable "external_dns_role_arn" {
-  type = string
-}
-
-variable "load_balancer_role_arn" {
   type = string
 }

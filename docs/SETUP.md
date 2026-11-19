@@ -1,12 +1,12 @@
 # Setup
 
 Build the project in this order. Each stage has a check you can run before
-the next one. Commands assume the repository root and `us-east-1`.
+the next one. Commands assume the repository root, `us-east-1`, and kOps 1.36.2.
 
-Install Terraform 1.14.6, kubectl 1.36.6, Helm 3.19, the AWS CLI and Docker
-before you start. The machine that runs Terraform also needs `aws` on `PATH`
-for the platform apply, because Terraform asks EKS for a token. Nothing in
-this setup opens an SSH session.
+Install Terraform 1.14.6, kOps 1.36.2, kubectl 1.36.6, Helm 3.19, the AWS CLI
+and Docker before you start. Nothing in this setup opens an SSH session.
+`sshAccess` in `kops/cluster.yaml` is empty, and the launch templates have no
+SSH key.
 
 `scripts/apply-environment.sh` runs stages 2 and 3. The commands below are
 the same steps, written out so each one can be run on its own.
@@ -24,7 +24,8 @@ Open http://localhost:8080 and sign in with a demo account from the root README.
 ## Stage 2. Create the Terraform state bucket
 
 This is the one AWS object Terraform does not create. Terraform stores its
-state in the bucket, so the bucket has to exist before `terraform init`.
+own state there, so the bucket has to exist before `terraform init`. It is
+not the kOps state bucket.
 
 ```sh
 export GITHUB_TOKEN=...   # classic repo scope, or fine-grained Actions + Administration write
@@ -40,36 +41,51 @@ already there.
 `GITHUB_TOKEN` is a credential, in the same way the AWS credentials are.
 Terraform uses it to publish Actions variables. It is not committed.
 
-## Stage 3. Terraform
+## Stage 3. Terraform and the kOps cluster
+
+The cluster spec is `kops/cluster.yaml`: name `k8s.agribridge.deuces.dev`,
+state store `s3://kops-state-607`, issuer bucket
+`agribridge-oidc-237258628535`. One `t3.medium` control plane and two
+`t3.large` workers. kOps 1.36.2 renders that spec to `terraform/kops` with
+`kops update cluster --target=terraform`. `terraform apply` creates the VPC,
+the instances, the security groups and the IAM, and uploads the node
+configuration into the state bucket.
+
+The render also writes the cluster certificates into the state bucket. Those
+certificates and the Terraform have to come from the same run, so the apply
+script refreshes `terraform/kops` before it applies. Commit the refreshed
+files when the spec changes.
 
 ### Fresh account
 
 ```sh
 export GITHUB_TOKEN=...
 export AWS_REGION=us-east-1
+export KOPS_STATE_STORE=s3://kops-state-607
 ./scripts/apply-environment.sh
 ```
 
-The first run creates the public zone `agribridge.deuces.dev` and prints its
-name servers. Give those four servers to the registrar that hosts the parent
-domain `deuces.dev`. Route 53 cannot change that parent. When `dig NS
-agribridge.deuces.dev` returns the same servers, run the script again.
+The first run creates the public zone `agribridge.deuces.dev`, the kOps
+buckets, and prints the zone's name servers. Give those four servers to the
+registrar that hosts `deuces.dev`. Route 53 cannot change that parent. When
+`dig NS agribridge.deuces.dev` returns the same servers, run the script again.
 
-The second run applies the root twice:
+The second run does this:
 
 ```sh
-terraform -chdir=terraform init -backend-config=backend.hcl
+./scripts/render-kops-terraform.sh
 terraform -chdir=terraform apply -var install_platform=false
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
+kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
 terraform -chdir=terraform apply -var install_platform=true
 ```
 
-The first apply creates the zone, the certificate, the VPC, the EKS cluster,
-the node group, the OIDC provider, the IAM roles, the Secrets Manager
-secrets, the backup bucket and the GitHub variables. The second apply installs
-the platform charts. The Helm provider has to speak to the API, and the API
-does not exist until the first apply finishes, so the two applies stay
-separate. Run the second one again any time. Once the charts are installed it
-changes nothing.
+The first apply creates the certificate, the secrets, the backup bucket, the
+GitHub variables, and the cluster. The second apply installs External Secrets,
+ExternalDNS and the monitoring charts. It reads the kubeconfig from
+`kops export kubeconfig --admin`. That admin credential is stored in the kOps
+state bucket. The GitHub Actions role can read that bucket, which is why the
+deploy job can do the same export. Treat the role as cluster-admin.
 
 `install_platform` defaults to false. A plain `terraform apply` builds the
 AWS resources and leaves the charts alone.
@@ -77,33 +93,27 @@ AWS resources and leaves the charts alone.
 ### Existing account
 
 State already lives in `agribridge-tfstate-237258628535` under
-`agribridge/terraform.tfstate`. The zone `agribridge.deuces.dev` already
-exists. The buckets `kops-state-607` and `agribridge-oidc-237258628535` are
-still in the account and used to be in this state. The script does the
-migration, then the two applies. Run it from a clean checkout:
+`agribridge/terraform.tfstate`. The zone `agribridge.deuces.dev`, the bucket
+`kops-state-607` and the bucket `agribridge-oidc-237258628535` already exist
+and stay under Terraform. The script imports a bucket or the zone only when
+it is in AWS and not yet in state. It does not remove them from state.
 
 ```sh
 export GITHUB_TOKEN=...
+export KOPS_STATE_STORE=s3://kops-state-607
 ./scripts/apply-environment.sh
 ```
 
-What the script changes in state, before the first apply:
+The same imports by hand, after `terraform init`:
 
 ```sh
 terraform -chdir=terraform init -backend-config=backend.hcl
 
-# Keep these buckets. They are no longer in the configuration, so leaving
-# them in state would make the next apply delete them.
-terraform -chdir=terraform state rm aws_s3_bucket.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_versioning.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_server_side_encryption_configuration.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket.discovery
-terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.discovery
-terraform -chdir=terraform state rm aws_s3_bucket_policy.discovery
+# Only if these are not already in the state. Skip an address Terraform cannot find.
+terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
+terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
 
-# The zone used to be a data source. Import the real zone so Terraform
-# adopts it instead of creating a second one.
+# The zone used to be a data source. Adopt the real zone.
 terraform -chdir=terraform state rm data.aws_route53_zone.app
 ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name agribridge.deuces.dev \
   --query "HostedZones[?Name=='agribridge.deuces.dev.'].Id | [0]" --output text)
@@ -111,7 +121,7 @@ terraform -chdir=terraform import aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
 ```
 
 If External Secrets and ExternalDNS were created with `attach_irsa=true`,
-their addresses had a `[0]`. Move them:
+move them off the `[0]` address:
 
 ```sh
 terraform -chdir=terraform state mv 'aws_iam_role.external_secrets[0]' aws_iam_role.external_secrets
@@ -120,38 +130,25 @@ terraform -chdir=terraform state mv 'aws_iam_role.external_dns[0]' aws_iam_role.
 terraform -chdir=terraform state mv 'aws_iam_role_policy.external_dns[0]' aws_iam_role_policy.external_dns
 ```
 
-Skip a `state mv` or `state rm` that says the address is not in state. A
-fresh state only needs the zone import, and only when the zone already exists.
-
-GitHub variables and environments that already exist are imported as
-`agribridge-project:NAME` (the repository name, without the owner). The
-script does that import when the GitHub API returns 200.
-
-There is no EKS cluster to import. The previous cluster was kOps and it has
-been deleted. Terraform creates the new one.
-
-After the apply, kubeconfig is:
+There is no cluster to import. The previous machines are gone. Terraform
+creates them again from `terraform/kops`.
 
 ```sh
-aws eks update-kubeconfig --name agribridge --region us-east-1
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 kubectl get nodes
 ```
-
-The IAM user who ran apply is a cluster admin. The GitHub Actions role is
-too, through an EKS access entry. The nodes have no SSH key.
 
 ## Stage 4. GitHub settings Terraform does not own
 
 Terraform writes `AWS_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`,
-`CLUSTER_NAME`, `ZONE_NAME`, `QA_URL`, `PRODUCTION_URL`, `GRAFANA_URL`,
-`BACKUP_BUCKET`, `BACKUP_ROLE_PRODUCTION` and `BACKUP_ROLE_QA`. It also
-creates the `qa` and `production` environments and adds `github_reviewer`
-(default `DeucesDevops`) as the required reviewer on production.
-`prevent_self_review` is false, so that person can approve their own
-production deployment.
+`KOPS_STATE_STORE`, `KOPS_CLUSTER_NAME`, `ZONE_NAME`, `QA_URL`,
+`PRODUCTION_URL`, `GRAFANA_URL`, `BACKUP_BUCKET`, `BACKUP_ROLE_PRODUCTION`
+and `BACKUP_ROLE_QA`. It also creates the `qa` and `production` environments
+and adds `github_reviewer` (default `DeucesDevops`) as the required reviewer
+on production. `prevent_self_review` is false, so that person can approve
+their own production deployment.
 
-Create these yourself. They are credentials for systems outside this AWS
-account.
+Create these yourself. They are credentials for systems outside this AWS account.
 
 | Setting | Value |
 |---|---|
@@ -165,8 +162,8 @@ account.
 Set them when the Docker Hub user is different. Make the repositories public
 so the nodes can pull them.
 
-You can delete old `KOPS_STATE_STORE` and `KOPS_CLUSTER_NAME` variables. The
-workflow does not read them.
+You can delete an old `CLUSTER_NAME` variable. The workflow reads
+`KOPS_CLUSTER_NAME`.
 
 Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
 scans, builds, pushes both images to Docker Hub, deploys QA, and then waits
@@ -231,36 +228,42 @@ is the wrong first command. The application Ingress is installed by GitHub
 Actions, so Terraform will delete the load balancer controller while that
 Ingress still exists and the Application Load Balancer will hold the subnets.
 ExternalDNS is set to `upsert-only`, so it does not delete the records it
-created, and the hosted zone then refuses to delete.
+created, and the hosted zone then refuses to delete. The kOps state bucket
+and the discovery bucket have `prevent_destroy` set, so a destroy that still
+has them in state stops there on purpose.
 
 The script does this:
 
 ```sh
 export GITHUB_TOKEN=...
-aws eks update-kubeconfig --name agribridge --region us-east-1
+export KOPS_STATE_STORE=s3://kops-state-607
+kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 helm uninstall agribridge --namespace agribridge-qa
 helm uninstall agribridge --namespace agribridge-production
-# Wait until no load balancer remains whose name starts with k8s-.
 terraform -chdir=terraform destroy -var install_platform=true -target=module.platform
 python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform output -raw zone_id)" --apply
+terraform -chdir=terraform state rm aws_s3_bucket.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_versioning.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_server_side_encryption_configuration.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.kops_state
+terraform -chdir=terraform state rm aws_s3_bucket.discovery
+terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.discovery
+terraform -chdir=terraform state rm aws_s3_bucket_policy.discovery
 terraform -chdir=terraform destroy -var install_platform=false
 ```
 
-`route53_cleanup.py` deletes A, AAAA and TXT records and leaves the zone apex
-NS and SOA, plus the ACM validation CNAMEs, for Terraform.
-
-The state bucket is kept. Delete it yourself after you no longer need the
-state:
+`state rm` keeps `kops-state-607` and `agribridge-oidc-237258628535` in the
+account. The Terraform state bucket is also kept. Delete it yourself after
+you no longer need the state:
 
 ```sh
 aws s3 rb s3://agribridge-tfstate-237258628535 --force
 ```
 
-`kops-state-607` and `agribridge-oidc-237258628535` are also left behind.
-Delete them the same way when you are finished with them. They are not part
-of the EKS environment.
+`route53_cleanup.py` deletes A, AAAA and TXT records and leaves the zone apex
+NS and SOA, plus the ACM validation CNAMEs, for Terraform.
 
-If destroy stops because the platform module is still in state and the API is
+If destroy stops because the platform module is still recorded and the API is
 already gone:
 
 ```sh

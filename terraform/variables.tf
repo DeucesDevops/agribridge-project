@@ -11,50 +11,27 @@ variable "zone_name" {
 }
 
 variable "cluster_name" {
-  description = "EKS cluster name."
+  description = "kOps cluster name. Must match metadata.name in kops/cluster.yaml."
   type        = string
-  default     = "agribridge"
+  default     = "k8s.agribridge.deuces.dev"
 }
 
-variable "kubernetes_version" {
-  description = "EKS Kubernetes version. 1.36 matches the version this project ran before."
+variable "kops_state_bucket" {
+  description = "S3 bucket kOps uses as KOPS_STATE_STORE, without the s3:// prefix."
   type        = string
-  default     = "1.36"
+  default     = "kops-state-607"
 }
 
-variable "vpc_cidr" {
-  description = "VPC address range. Public subnets are cut from this."
+variable "discovery_bucket" {
+  description = "Public S3 bucket for the kOps service-account issuer. Must match discoveryStore in kops/cluster.yaml and must not contain dots."
   type        = string
-  default     = "172.20.0.0/16"
+  default     = "agribridge-oidc-237258628535"
 }
 
-variable "availability_zones" {
-  description = "AZs for the public subnets and the node group. EKS needs two."
-  type        = list(string)
-  default     = ["us-east-1a", "us-east-1b"]
-
-  validation {
-    condition     = length(var.availability_zones) >= 2 && length(var.availability_zones) <= 4
-    error_message = "Use two, three or four availability zones."
-  }
-}
-
-variable "node_instance_type" {
-  description = "Worker instance type. t3.large has room for the monitoring stack."
+variable "kubeconfig_path" {
+  description = "Kubeconfig written by kops export kubeconfig --admin. Required for the platform apply."
   type        = string
-  default     = "t3.large"
-}
-
-variable "node_desired_size" {
-  description = "Worker count. Two spreads the nodes across the AZs."
-  type        = number
-  default     = 2
-}
-
-variable "api_access_cidrs" {
-  description = "CIDRs allowed to reach the Kubernetes API. GitHub-hosted runners need a public API. Access still requires IAM."
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = "~/.kube/config"
 }
 
 variable "backup_bucket" {

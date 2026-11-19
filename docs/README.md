@@ -2,7 +2,7 @@
 
 | Guide | Purpose |
 |---|---|
-| [SETUP.md](SETUP.md) | Build the local app, the EKS cluster and the pipeline, in order |
+| [SETUP.md](SETUP.md) | Build the local app, the kOps cluster and the pipeline, in order |
 | [PIPELINE.md](PIPELINE.md) | What each CI/CD job does, and which GitHub settings it needs |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Request path, pipeline, cluster, and the diagram |
 

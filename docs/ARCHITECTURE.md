@@ -2,7 +2,7 @@
 
 ![AgriBridge architecture](images/agribridge-architecture.jpg)
 
-The request path in the diagram is current. The cluster is Amazon EKS, created by Terraform.
+The diagram is the delivery path. The cluster is kOps, and Terraform creates the machines from the rendered spec.
 
 ## Application
 
@@ -35,29 +35,32 @@ scan and SBOM.
 
 ## Cluster and AWS
 
-Terraform creates the cluster. It is Amazon EKS 1.36 in a VPC with two public
-subnets. The managed node group is `t3.large`, the root disks are encrypted,
-and the launch template has no SSH key. The API is public. Callers need an
-EKS access entry. The person who applies Terraform is an admin, and so is the
-GitHub Actions role.
+The cluster spec is [`kops/cluster.yaml`](../kops/cluster.yaml). kOps 1.36.2
+renders it with `kops update cluster --target=terraform` into
+[`terraform/kops`](../terraform/kops), and Terraform creates what that file
+describes: the VPC, one `t3.medium` control plane, two `t3.large` workers,
+encrypted root disks, no SSH key, the API on port 443, Calico, the EBS CSI
+driver, the AWS Load Balancer Controller and the service-account issuer.
+The issuer is `https://agribridge-oidc-237258628535.s3.us-east-1.amazonaws.com`
+and the token audience is `amazonaws.com`.
 
-EKS is in this root because the cluster, the zone, the certificate and the
-roles then come from one apply. A kOps cluster would keep a second state
-store and a second command. The kOps Terraform target writes a generated tree
-that has to be regenerated with kOps, so the source of the cluster would still
-be kOps.
+Rendering also writes the cluster certificates into `s3://kops-state-607`.
+The node configuration Terraform uploads has to match those certificates, so
+`scripts/render-kops-terraform.sh` is run before apply. GitHub Actions gets a
+kubeconfig with `kops export kubeconfig --admin`. The deploy role can read
+the state bucket, which holds that admin credential.
 
 The same root also creates:
 
 - the public Route 53 zone and the ACM certificate for the zone and `*.zone`
 - the GitHub Actions OIDC role, and it writes that role ARN to GitHub
 - Secrets Manager secrets `agribridge/qa`, `agribridge/production` and `agribridge/grafana`
-- IRSA roles for External Secrets, ExternalDNS, the load balancer controller, the EBS CSI driver and the backup jobs
-- the backup bucket
-- the platform Helm releases, on a second apply, once the API exists
+- IRSA roles for External Secrets, ExternalDNS and the database backup. The load balancer controller and the EBS driver roles are in the kOps output
+- the kOps state bucket, the OIDC discovery bucket and the backup bucket
+- the platform Helm releases, on a second apply, once the API answers
 
-The state bucket is the exception. `scripts/bootstrap-state.sh` creates it,
-because Terraform needs it before the first `init`.
+`scripts/bootstrap-state.sh` creates the Terraform state bucket. Terraform
+needs that bucket before the first `init`, so it cannot create it.
 
 ## Traffic and secrets
 
@@ -67,8 +70,8 @@ attaches the ACM certificate. ExternalDNS creates the records from the Ingress
 host.
 
 External Secrets reads Secrets Manager with an IAM role. The trust policy uses
-the EKS OIDC issuer and the audience `sts.amazonaws.com`. The synced secret
-supplies `PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD`.
+the kOps issuer and the audience `amazonaws.com`. The synced secret supplies
+`PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD`.
 
 Production PostgreSQL is backed up by a CronJob in the application chart. It
 runs `pg_dump` and uploads the file to S3 with its own IRSA role. Restore is

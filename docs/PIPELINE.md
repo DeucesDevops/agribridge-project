@@ -32,7 +32,8 @@ Create these under **Settings → Secrets and variables → Actions**.
 | Variable | `WEB_IMAGE_REPOSITORY` | No | `docker.io/macroni607/agribridge-web` when unset |
 | Variable | `AWS_ROLE_ARN` | To deploy | Terraform writes this |
 | Variable | `AWS_REGION` | No | Terraform writes `us-east-1`. The workflow uses that when the variable is missing |
-| Variable | `CLUSTER_NAME` | No | Terraform writes `agribridge` |
+| Variable | `KOPS_STATE_STORE` | No | Terraform writes `s3://kops-state-607` |
+| Variable | `KOPS_CLUSTER_NAME` | No | Terraform writes `k8s.agribridge.deuces.dev` |
 | Variable | `ZONE_NAME` | No | Terraform writes the zone. CI builds the hostnames from it |
 | Variable | `ACM_CERTIFICATE_ARN` | For deploy | Terraform writes this |
 | Variable | `BACKUP_BUCKET` | For production | Terraform writes this |
@@ -70,6 +71,6 @@ GitHub creates an environment automatically the first time a job uses it, and
 that automatic environment has no reviewers. Create `production` and add a
 required reviewer first, or the first promotion will not wait.
 
-The deploy role can call `eks:DescribeCluster`. An access entry makes it a
-cluster admin, which is what `helm upgrade` needs. Treat that role as
-cluster-admin access.
+The deploy role can read the kOps state bucket. `kops export kubeconfig --admin`
+uses that to write a kubeconfig, which is what `helm upgrade` needs. The
+admin key is in the state bucket, so treat the role as cluster-admin access.

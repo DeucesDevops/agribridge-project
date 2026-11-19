@@ -117,7 +117,7 @@ metadata:
   labels:
     app: {{ .Release.Name }}-{{ $component }}
 spec:
-  # The Ingress uses instance targets, so the web Service is a NodePort.
+  # Calico pod IPs are not routable from the VPC, so the ALB targets the web NodePort on each node.
   type: {{ if eq $component "web" }}NodePort{{ else }}ClusterIP{{ end }}
   selector:
     app: {{ .Release.Name }}-{{ $component }}
