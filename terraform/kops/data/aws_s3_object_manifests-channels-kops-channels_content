@@ -26,14 +26,6 @@ spec:
       value: /tmp
     - name: AWS_REGION
       value: us-east-1
-    - name: S3_ACCESS_KEY_ID
-      value: test
-    - name: S3_ENDPOINT
-      value: http://127.0.0.1:4566
-    - name: S3_REGION
-      value: us-east-1
-    - name: S3_SECRET_ACCESS_KEY
-      value: test
     image: registry.k8s.io/kops/channels:1.36.2@sha256:d54936126aa5af6a28f5df7799a069dba54883c5195232a49f4f2f379102d6e5
     name: kops-channels
     readinessProbe:
