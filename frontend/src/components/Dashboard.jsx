@@ -43,9 +43,9 @@ export default function Dashboard() {
 
   return (
     <>
-      <h1>Marketplace overview</h1>
+      <h1>Marketplace overview and performance</h1>
 
-      <div className="kpis">
+      <div className="kpis">z
         <div className="kpi">
           <div className="label">Open lots</div>
           <div className="value">{summary.open_lots}</div>
