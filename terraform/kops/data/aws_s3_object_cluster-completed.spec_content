@@ -1,7 +1,6 @@
 apiVersion: kops.k8s.io/v1alpha2
 kind: Cluster
 metadata:
-  creationTimestamp: "2026-11-19T14:20:50Z"
   name: k8s.agribridge.deuces.dev
 spec:
   api:
