@@ -39,8 +39,9 @@ Docker Compose runs the same four processes for local development and sets
 |---|---|---|---|
 | `values-production.yaml` | `agribridge-production` | `production.agribridge.deuces.dev` | Loaded once, with `SEED_DEMO_DATA=false` |
 
-The release uses the image tag built on `main`. The namespace has its own
-database volume and the Secrets Manager secret `agribridge/production`.
+The release uses the image tag committed in `values-production.yaml` on `main`.
+The namespace has its own database volume and the Secrets Manager secret
+`agribridge/production`.
 
 ## Pipeline
 
@@ -49,7 +50,10 @@ SonarQube runs on `main` when `SONAR_TOKEN` and `SONAR_HOST_URL` are set, and
 the job succeeds with a skip message otherwise. A push to `main` publishes
 `docker.io/macroni607/agribridge-api` and
 `docker.io/macroni607/agribridge-web`. The `production` GitHub environment
-must approve that tag before `helm upgrade` runs in `agribridge-production`.
+must approve that tag before the workflow commits it to
+`values-production.yaml`. The commit author is DeucesDevops and the message
+contains `[skip ci]`, so the bump does not build again. Argo CD tracks `main`
+and syncs `helm/agribridge` with prune and selfHeal.
 Pull requests and `dev` finish after the image scan and SBOM.
 
 ## Cluster and AWS
@@ -65,9 +69,10 @@ and the token audience is `amazonaws.com`.
 
 Rendering also writes the cluster certificates into `s3://kops-state-607`.
 The node configuration Terraform uploads has to match those certificates, so
-`scripts/render-kops-terraform.sh` is run before apply. GitHub Actions gets a
-kubeconfig with `kops export kubeconfig --admin`. The deploy role can read
-the state bucket, which holds that admin credential.
+`scripts/render-kops-terraform.sh` is run before apply. The GitHub Actions role
+can still read the state bucket and export a kubeconfig with
+`kops export kubeconfig --admin`. The pipeline does not use that credential.
+The image-tag job only pushes a commit.
 
 The same root also creates:
 
@@ -76,7 +81,7 @@ The same root also creates:
 - Secrets Manager secrets `agribridge/production` and `agribridge/grafana`
 - IRSA roles for External Secrets, ExternalDNS and the database backup. The load balancer controller and the EBS driver roles are in the kOps output
 - the kOps state bucket, the OIDC discovery bucket and the backup bucket
-- the platform Helm releases, on a second apply with `install_platform=true`: external-secrets, external-dns, kube-prometheus-stack, Loki, and Promtail
+- the platform Helm releases, on a second apply with `install_platform=true`: Argo CD, external-secrets, external-dns, kube-prometheus-stack, Loki, and Promtail
 
 `scripts/bootstrap-state.sh` creates the Terraform state bucket. Terraform
 needs that bucket before the first `init`, so it cannot create it.
@@ -91,7 +96,10 @@ ExternalDNS creates the records from the Ingress host. Grafana uses a second
 Ingress in that same group, also with instance targets, and its Service is a
 NodePort. The hostname is `grafana.agribridge.deuces.dev`. Grafana's own
 health check path is `/api/health`, which is Grafana's API, not the AgriBridge
-API.
+API. Argo CD uses a third Ingress in that group. The Service is a NodePort,
+the target type is `instance`, and the hostname is `argocd.agribridge.deuces.dev`.
+The load balancer terminates TLS and talks HTTP to the server. The health check
+path is `/healthz`.
 
 External Secrets reads Secrets Manager with an IAM role. The trust policy uses
 the kOps issuer and the audience `amazonaws.com`. The synced secret supplies
@@ -110,6 +118,29 @@ on the same load balancer. Anonymous access and sign-up are off. The username
 and password are the `admin_user` and `admin_password` keys in Secrets Manager
 `agribridge/grafana`.
 
+Argo CD is served at [https://argocd.agribridge.deuces.dev](https://argocd.agribridge.deuces.dev).
+The username is `admin`. The generated password is in
+`argocd-initial-admin-secret`. Read it with:
+
+```sh
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+The Application `agribridge` lives in the `argocd` namespace. It points at
+`https://github.com/DeucesDevops/agribridge-project.git`, revision `main`,
+path `helm/agribridge`, and value files `values.yaml` and
+`values-production.yaml`. The repository is public, so Argo CD clones it
+without a credential. Automated sync is on, with prune and selfHeal.
+Terraform sets the Helm parameters `hostname`, `region`, `certificateArn`,
+`backup.bucket` and `backup.roleArn` on that Application. Image tags are not
+parameters. They come from the committed values file, which is why the
+approved CI commit is what production runs. Argo CD reconciles git about
+every 60 seconds. Refresh sooner with:
+
+```sh
+kubectl -n argocd annotate application agribridge argocd.argoproj.io/refresh=hard --overwrite
+```
+
 Prometheus has no Ingress. Query it from Grafana Explore, or from a machine
 that has a kubeconfig:
 
@@ -125,6 +156,7 @@ API does not export spans.
 
 ## What this repository does not contain
 
-Argo CD, an NGINX ingress controller, a Network Load Balancer, Fluent Bit,
+An NGINX ingress controller, a Network Load Balancer, Fluent Bit,
 CloudWatch Logs, composite GitHub Actions, and extra Terraform roots are not
-part of this design.
+part of this design. Argo CD Image Updater is not installed. The pipeline
+commits the tag itself, after the production approval.

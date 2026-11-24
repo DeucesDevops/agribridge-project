@@ -28,10 +28,26 @@ if [ -z "$KEY" ]; then
 fi
 
 REPLICAS="$(kubectl -n "$NS" get deploy agribridge-api -o jsonpath='{.spec.replicas}')"
-restore_api() {
+ARGO_APP_NS="${ARGO_APP_NS:-argocd}"
+ARGO_APP="${ARGO_APP:-agribridge}"
+PAUSED=0
+resume_api() {
+  if [ "$PAUSED" = "1" ]; then
+    # Put automated sync back before anything else reads the Application.
+    # Terraform owns this object. The patch restores the same prune and selfHeal values.
+    kubectl -n "$ARGO_APP_NS" patch application "$ARGO_APP" --type merge \
+      -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}' || true
+  fi
   kubectl -n "$NS" scale deploy agribridge-api --replicas="$REPLICAS"
 }
-trap restore_api EXIT
+trap resume_api EXIT
+
+if kubectl -n "$ARGO_APP_NS" get application "$ARGO_APP" -o jsonpath='{.spec.syncPolicy.automated.selfHeal}' 2>/dev/null | grep -q true; then
+  echo "Pausing Argo CD auto-sync so selfHeal does not scale the API back up during the restore."
+  kubectl -n "$ARGO_APP_NS" patch application "$ARGO_APP" --type json \
+    -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]'
+  PAUSED=1
+fi
 
 echo "Scaling agribridge-api to 0 in ${NS} before the restore."
 kubectl -n "$NS" scale deploy agribridge-api --replicas=0

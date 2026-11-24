@@ -95,10 +95,14 @@ terraform -chdir=terraform apply -var install_platform=true
 
 The first apply creates the certificate, the secrets, the backup bucket, the
 GitHub variables, and the cluster. The second apply installs External Secrets,
-ExternalDNS, kube-prometheus-stack, Loki, and Promtail. It reads the kubeconfig
-from `kops export kubeconfig --admin`. That admin credential is stored in the
-kOps state bucket. The GitHub Actions role can read that bucket, which is why
-the deploy job can do the same export. Treat the role as cluster-admin.
+ExternalDNS, Argo CD, kube-prometheus-stack, Loki, and Promtail. It reads the
+kubeconfig from `kops export kubeconfig --admin`. That admin credential is
+stored in the kOps state bucket. The GitHub Actions role can read that bucket.
+Treat the role as cluster-admin. The image-tag job does not assume it.
+
+Merge this GitOps change to `main` before that second apply. Argo CD tracks
+`main`. If `main` still runs `helm upgrade` while Argo CD is installed, the
+two writers will fight. `selfHeal` puts the cluster back to git.
 
 `install_platform` defaults to false. A plain `terraform apply` builds the
 AWS resources and leaves the charts alone.
@@ -165,7 +169,7 @@ kubectl get nodes
 
 Terraform writes `AWS_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`,
 `KOPS_STATE_STORE`, `KOPS_CLUSTER_NAME`, `ZONE_NAME`, `PRODUCTION_URL`,
-`GRAFANA_URL`, `BACKUP_BUCKET` and `BACKUP_ROLE_PRODUCTION`. It also creates
+`GRAFANA_URL`, `ARGOCD_URL`, `BACKUP_BUCKET` and `BACKUP_ROLE_PRODUCTION`. It also creates
 the `production` environment and adds `github_reviewer` (default
 `DeucesDevops`) as the required reviewer. `prevent_self_review` is false, so
 that person can approve their own production deployment.
@@ -188,12 +192,22 @@ You can delete an old `CLUSTER_NAME` variable. The workflow reads
 `KOPS_CLUSTER_NAME`.
 
 Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
-scans, builds, pushes both images to Docker Hub, and waits on the production
-environment. Approve that environment in GitHub. That approval is the human
-gate the pipeline is supposed to have.
+scans, builds, and pushes both images to Docker Hub. It then waits on the
+production environment. Approve that environment in GitHub. That approval is
+the human gate. The job then commits the image tag to
+`helm/agribridge/values-production.yaml` on `main`. Argo CD syncs the commit
+into `agribridge-production`. Until that first commit, the tag in git is
+`local` and the pods cannot pull an image.
 
 The app is [https://production.agribridge.deuces.dev](https://production.agribridge.deuces.dev).
 Grafana is [https://grafana.agribridge.deuces.dev](https://grafana.agribridge.deuces.dev).
+Argo CD is [https://argocd.agribridge.deuces.dev](https://argocd.agribridge.deuces.dev).
+The Argo CD username is `admin`. Read the generated password on your machine:
+
+```sh
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
 Grafana's username and password are the `admin_user` and `admin_password` keys
 in Secrets Manager `agribridge/grafana`. Read them on your machine and keep
 the password out of git, issues, and chat:
@@ -230,6 +244,42 @@ The seed also inserts more farmers, buyers, lots, and orders. Locally, Compose
 does this on startup because `SEED_DEMO_DATA=true`, and the password is
 `SEED_PASSWORD` in `.env`.
 
+### Show a code change deploying
+
+Work on `dev`, then merge `dev` into `main` to release. Argo CD tracks `main`
+only. A push to `dev` does not change production.
+
+1. Change something visible. A string on the dashboard is enough.
+2. Open a pull request into `dev`, merge it, then merge `dev` into `main`.
+3. Wait until **CI/CD** on that `main` commit has pushed the images. The job
+   **Publish production image tags** stays yellow until you approve the
+   `production` environment.
+4. Approve it. The job commits `deploy: set production images to <sha> [skip ci]`
+   as DeucesDevops. That commit does not start another build.
+5. Open Argo CD. The application `agribridge` moves to Synced and Healthy.
+   Git is read about every 60 seconds. To refresh immediately:
+
+```sh
+kubectl -n argocd annotate application agribridge argocd.argoproj.io/refresh=hard --overwrite
+```
+
+6. The public version endpoint returns the same SHA:
+
+```sh
+curl -fsS https://production.agribridge.deuces.dev/version
+```
+
+`gitSha` and `imageTag` match the commit that built the image. The running
+pods use `docker.io/macroni607/agribridge-api` and
+`docker.io/macroni607/agribridge-web` at that tag.
+
+To roll back, set both `tag` lines in `values-production.yaml` back to the
+previous image SHA and push that commit to `main` with `[skip ci]` in the
+message. Argo CD syncs the older image. `selfHeal` puts the cluster back if
+you only change it with `kubectl` or `helm rollback`. A revert of the tag
+commit that does not contain `[skip ci]` starts a new build and, after the
+next approval, writes a new tag.
+
 ## Stage 5. Show a backup and a restore
 
 Production installs a CronJob that runs `pg_dump` at 02:15 UTC and uploads
@@ -242,7 +292,9 @@ the file to `s3://agribridge-backups-237258628535/production/`. A copy is also w
 
 The script writes a marker row, takes a backup, changes the row, restores
 `production/latest.sql`, and checks the marker is back to the dumped value.
-It scales the API to 0 for the restore and scales it back afterwards.
+It pauses Argo CD auto-sync, scales the API to 0 for the restore, scales it
+back, and turns prune and selfHeal back on. Without that pause, selfHeal
+would scale the API up in the middle of the restore.
 
 To restore a named dump:
 
@@ -260,21 +312,18 @@ kubectl -n agribridge-production wait --for=condition=complete job/agribridge-ba
 
 ## Stage 6. Roll back or tear down
 
-Roll back an application release without rebuilding the cluster:
-
-```sh
-helm history agribridge --namespace agribridge-production
-helm rollback agribridge REVISION --namespace agribridge-production
-```
+Roll an image back by committing the previous tag, as the GitOps demo above
+describes. That is the rollback that survives `selfHeal`.
 
 Tear down with `scripts/teardown-environment.sh`. A plain `terraform destroy`
-is the wrong first command. The application Ingress is installed by GitHub
-Actions, so Terraform will delete the load balancer controller while that
-Ingress still exists and the Application Load Balancer will hold the subnets.
-ExternalDNS is set to `upsert-only`, so it does not delete the records it
-created, and the hosted zone then refuses to delete. The kOps state bucket
-and the discovery bucket have `prevent_destroy` set, so a destroy that still
-has them in state stops there on purpose.
+is the wrong first command. Argo CD owns the application. While that
+Application exists, `selfHeal` recreates the Ingress. Delete the Application
+first, while Argo CD is still running, so the finalizer removes the Ingress
+and the load balancer can release the subnets. ExternalDNS is set to
+`upsert-only`, so it does not delete the records it created, and the hosted
+zone then refuses to delete. The kOps state bucket and the discovery bucket
+have `prevent_destroy` set, so a destroy that still has them in state stops
+there on purpose.
 
 The script does this:
 
@@ -282,6 +331,7 @@ The script does this:
 export GITHUB_TOKEN=...
 export KOPS_STATE_STORE=s3://kops-state-607
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
+kubectl delete application agribridge --namespace argocd --wait=true --timeout=180s
 helm uninstall agribridge --namespace agribridge-production
 terraform -chdir=terraform destroy -var install_platform=true -target=module.platform
 python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform output -raw zone_id)" --apply

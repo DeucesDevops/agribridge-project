@@ -7,6 +7,28 @@ locals {
     loki             = "7.6.0"
     monitoring       = "93.3.1"
     promtail         = "6.17.1"
+    # Keep the CI helm template version in .github/workflows/cicd.yaml in step with this.
+    argocd = "10.18.2"
+  }
+
+  argocd_values = {
+    global = {
+      domain = var.argocd_hostname
+    }
+    configs = {
+      cm = {
+        url = "https://${var.argocd_hostname}"
+      }
+    }
+    server = {
+      ingress = {
+        hostname = var.argocd_hostname
+        annotations = {
+          "alb.ingress.kubernetes.io/certificate-arn" = var.certificate_arn
+          "external-dns.alpha.kubernetes.io/hostname" = var.argocd_hostname
+        }
+      }
+    }
   }
 
   storage_class = yamldecode(file("${local.values_dir}/storage-class.yaml"))
@@ -176,4 +198,44 @@ resource "helm_release" "promtail" {
   values = [file("${local.values_dir}/promtail-values.yaml")]
 
   depends_on = [helm_release.loki]
+}
+
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = local.chart_version.argocd
+  namespace        = "argocd"
+  create_namespace = true
+  wait             = true
+  atomic           = true
+  timeout          = 900
+
+  values = [
+    file("${local.values_dir}/argocd-values.yaml"),
+    yamlencode(local.argocd_values),
+  ]
+}
+
+resource "helm_release" "agribridge_application" {
+  name             = "agribridge-application"
+  chart            = "${path.module}/../../../helm/agribridge-application"
+  namespace        = "argocd"
+  create_namespace = false
+  wait             = true
+  atomic           = true
+  timeout          = 300
+
+  values = [yamlencode({
+    repoURL              = "https://github.com/${var.github_repository}.git"
+    targetRevision       = "main"
+    hostname             = var.production_hostname
+    region               = var.region
+    certificateArn       = var.certificate_arn
+    backupBucket         = var.backup_bucket
+    backupRoleArn        = var.backup_role_arn
+    destinationNamespace = "agribridge-production"
+  })]
+
+  depends_on = [helm_release.argocd]
 }

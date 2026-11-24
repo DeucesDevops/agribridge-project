@@ -13,6 +13,8 @@ inputs. Do not install these charts by hand.
 | `loki` | grafana/loki | 7.6.0 | `loki-values.yaml` |
 | `monitoring` | prometheus-community/kube-prometheus-stack | 93.3.1 | `prometheus-values.yaml` plus the Grafana Ingress |
 | `promtail` | grafana/promtail | 6.17.1 | `promtail-values.yaml` |
+| `argocd` | argo/argo-cd | 10.18.2 | `argocd-values.yaml` plus the hostname and certificate |
+| `agribridge-application` | `helm/agribridge-application` | chart in this repo | Application `agribridge`, after Argo CD |
 
 `storage-class.yaml` is the `gp3` class. Terraform reads that file and creates
 it. The EBS CSI driver from kOps provisions the volumes.
@@ -32,6 +34,25 @@ Anonymous access is off and sign-up is off. The username and password are the
 `admin_user` and `admin_password` keys in Secrets Manager `agribridge/grafana`.
 Read the secret on your machine. Do not paste the password into git, issues,
 or chat.
+
+Argo CD is on the same load balancer, at
+[https://argocd.agribridge.deuces.dev](https://argocd.agribridge.deuces.dev).
+The Service is a NodePort and the target type is `instance`, in the group
+`agribridge`. TLS ends at the load balancer and the server is HTTP, which is
+`server.insecure`. Dex and the notifications controller are off. The username
+is `admin`. The password is generated into `argocd-initial-admin-secret`:
+
+```sh
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
+```
+
+Do not paste that password into git, issues, or chat. The release
+`agribridge-application` creates the Application `agribridge` in the `argocd`
+namespace. It syncs `helm/agribridge` from `main` with prune and selfHeal.
+Image tags come from `values-production.yaml`. Terraform supplies the
+hostname, region, certificate ARN, backup bucket and backup role as Helm
+parameters. The GitHub repository is public, so Argo CD clones it without a
+credential.
 
 ```sh
 aws secretsmanager get-secret-value --secret-id agribridge/grafana \

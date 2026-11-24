@@ -13,6 +13,7 @@ locals {
     ZONE_NAME              = var.zone_name
     PRODUCTION_URL         = "https://${local.production_hostname}"
     GRAFANA_URL            = "https://${local.grafana_hostname}"
+    ARGOCD_URL             = "https://${local.argocd_hostname}"
     BACKUP_BUCKET          = aws_s3_bucket.backups.bucket
     BACKUP_ROLE_PRODUCTION = aws_iam_role.backup_production.arn
   } : {}

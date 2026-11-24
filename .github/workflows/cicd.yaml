@@ -3,12 +3,14 @@
 # Read this file from top to bottom:
 #   lint and test -> Gitleaks -> SonarQube -> Trivy source scan -> Checkov
 #   -> build images -> Trivy image scan -> SBOM -> push to Docker Hub
-#   -> manual approval -> deploy production
+#   -> manual approval -> commit the image tag on main
 #
 # SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset.
 # Push runs on main when the Docker Hub secrets are set.
-# Deploy assumes AWS_ROLE_ARN, which Terraform writes, and reads the kOps state store.
 # Production waits on the GitHub environment named "production".
+# After approval, the job commits the image tag to helm/agribridge/values-production.yaml.
+# The commit message contains [skip ci], and the author is DeucesDevops.
+# Argo CD tracks main and syncs that commit. The job does not run helm upgrade.
 
 name: CI/CD
 
@@ -27,14 +29,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-  KOPS_STATE_STORE: ${{ vars.KOPS_STATE_STORE || 's3://kops-state-607' }}
-  KOPS_CLUSTER_NAME: ${{ vars.KOPS_CLUSTER_NAME || 'k8s.agribridge.deuces.dev' }}
-  ZONE_NAME: ${{ vars.ZONE_NAME || 'agribridge.deuces.dev' }}
-  ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
-  BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
-  BACKUP_ROLE_PRODUCTION: ${{ vars.BACKUP_ROLE_PRODUCTION }}
   API_IMAGE_REPOSITORY: ${{ vars.API_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-api' }}
   WEB_IMAGE_REPOSITORY: ${{ vars.WEB_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-web' }}
   IMAGE_TAG: ${{ github.sha }}
@@ -232,7 +226,39 @@ jobs:
       - name: Helm lint and render
         run: |
           helm lint helm/agribridge
+          helm lint helm/agribridge-application
           helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml > production.yaml
+          helm template agribridge-application helm/agribridge-application --namespace argocd \
+            --set-string certificateArn=arn:aws:acm:us-east-1:237258628535:certificate/00000000-0000-0000-0000-000000000000 \
+            --set-string backupBucket=agribridge-backups-237258628535 \
+            --set-string backupRoleArn=arn:aws:iam::237258628535:role/agribridge-backup-production \
+            > application.yaml
+          grep -q 'prune: true' application.yaml
+          grep -q 'selfHeal: true' application.yaml
+          grep -q 'targetRevision: "main"' application.yaml
+          argocd_version="$(sed -n 's/^[[:space:]]*argocd[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' terraform/modules/platform/main.tf)"
+          test -n "${argocd_version}"
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm template argocd argo/argo-cd \
+            --version "${argocd_version}" \
+            --namespace argocd \
+            --values platform/argocd-values.yaml \
+            --values - > argocd.yaml <<'EOF'
+          global:
+            domain: argocd.agribridge.deuces.dev
+          configs:
+            cm:
+              url: https://argocd.agribridge.deuces.dev
+          server:
+            ingress:
+              annotations:
+                alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:237258628535:certificate/00000000-0000-0000-0000-000000000000
+                alb.ingress.kubernetes.io/target-type: instance
+                external-dns.alpha.kubernetes.io/hostname: argocd.agribridge.deuces.dev
+          EOF
+          grep -q 'target-type: "instance"' argocd.yaml
+          grep -q 'argocd.agribridge.deuces.dev' argocd.yaml
+          grep -q 'server.insecure: "true"' argocd.yaml
       - name: Install Checkov
         run: |
           python3 -m venv "${RUNNER_TEMP}/checkov"
@@ -242,6 +268,7 @@ jobs:
         run: |
           checkov --directory terraform --framework terraform --config-file .github/checkov.yaml --download-external-modules false
           checkov --file production.yaml --framework kubernetes --config-file .github/checkov.yaml
+          checkov --file application.yaml --framework kubernetes --config-file .github/checkov.yaml
           checkov --directory api --framework dockerfile --config-file .github/checkov.yaml
           checkov --directory frontend --framework dockerfile --config-file .github/checkov.yaml
 
@@ -340,59 +367,59 @@ jobs:
             echo "api_image=${API_IMAGE_REPOSITORY}"
             echo "web_image=${WEB_IMAGE_REPOSITORY}"
           } >> "${GITHUB_OUTPUT}"
-          if [ -z "${AWS_ROLE_ARN}" ]; then
-            echo "Images are on Docker Hub. Deploy waits until Terraform has published AWS_ROLE_ARN."
-          fi
+          echo "Images are on Docker Hub. The production environment approval commits this tag for Argo CD."
 
   deploy-production:
-    name: Deploy production
+    name: Publish production image tags
     needs: build
-    if: needs.build.outputs.pushed == 'true' && vars.AWS_ROLE_ARN != ''
+    if: needs.build.outputs.pushed == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    permissions:
+      contents: write
     environment:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.19.0
-      - name: Install kubectl and kOps
+          ref: main
+          fetch-depth: 0
+      - name: Commit the approved image tag
         run: |
-          # Download into RUNNER_TEMP: the repo has a kops/ directory, so "-o kops" in the checkout fails.
-          curl -fsSL -o "${RUNNER_TEMP}/kubectl" "https://dl.k8s.io/release/v1.36.6/bin/linux/amd64/kubectl"
-          curl -fsSL -o "${RUNNER_TEMP}/kops" "https://github.com/kubernetes/kops/releases/download/v1.36.2/kops-linux-amd64"
-          sudo install -m 0755 "${RUNNER_TEMP}/kubectl" "${RUNNER_TEMP}/kops" /usr/local/bin/
-      - name: Deploy the production release
-        run: |
-          if [ -z "${ACM_CERTIFICATE_ARN}" ] || [ -z "${BACKUP_BUCKET}" ] || [ -z "${BACKUP_ROLE_PRODUCTION}" ]; then
-            echo "ACM_CERTIFICATE_ARN, BACKUP_BUCKET or BACKUP_ROLE_PRODUCTION is empty. Terraform publishes them. Run the apply in docs/SETUP.md."
-            exit 1
-          fi
-          kops export kubeconfig --name "${KOPS_CLUSTER_NAME}" --admin --kubeconfig "${RUNNER_TEMP}/kubeconfig"
-          chmod 600 "${RUNNER_TEMP}/kubeconfig"
-          export KUBECONFIG="${RUNNER_TEMP}/kubeconfig"
-          helm upgrade --install agribridge helm/agribridge \
-            --namespace agribridge-production \
-            --create-namespace \
-            --values helm/agribridge/values.yaml \
-            --values helm/agribridge/values-production.yaml \
-            --set-string "api.repository=${API_IMAGE}" \
-            --set-string "api.tag=${IMAGE_TAG}" \
-            --set-string "web.repository=${WEB_IMAGE}" \
-            --set-string "web.tag=${IMAGE_TAG}" \
-            --set-string "hostname=production.${ZONE_NAME}" \
-            --set-string "region=${AWS_REGION}" \
-            --set-string "certificateArn=${ACM_CERTIFICATE_ARN}" \
-            --set-string "backup.bucket=${BACKUP_BUCKET}" \
-            --set-string "backup.roleArn=${BACKUP_ROLE_PRODUCTION}" \
-            --wait \
-            --timeout 10m
-        env:
-          API_IMAGE: ${{ env.API_IMAGE_REPOSITORY }}
-          WEB_IMAGE: ${{ env.WEB_IMAGE_REPOSITORY }}
+          # Author and committer are the repository owner. [skip ci] stops this
+          # commit from building the same images again.
+          git config user.name "DeucesDevops"
+          git config user.email "macroni607@gmail.com"
+          values="helm/agribridge/values-production.yaml"
+          for _ in 1 2 3; do
+            git fetch origin main
+            git checkout -B main origin/main
+            current="$(python3 -c 'import pathlib,re; text=pathlib.Path("'"${values}"'").read_text(); match=re.search(r"(?m)^  tag: (\S+)", text); print(match.group(1) if match else "")')"
+            if [ "${current}" = "${IMAGE_TAG}" ]; then
+              echo "Production already records ${IMAGE_TAG}."
+              exit 0
+            fi
+            if git cat-file -e "${current}^{commit}" 2>/dev/null && git merge-base --is-ancestor "${IMAGE_TAG}" "${current}"; then
+              echo "Production already records ${current}, which contains ${IMAGE_TAG}. Leaving it."
+              exit 0
+            fi
+            python3 scripts/update_production_images.py \
+              --file "${values}" \
+              --api-repository "${API_IMAGE_REPOSITORY}" \
+              --web-repository "${WEB_IMAGE_REPOSITORY}" \
+              --tag "${IMAGE_TAG}"
+            git add "${values}"
+            if git diff --cached --quiet; then
+              echo "Production values already match ${IMAGE_TAG}."
+              exit 0
+            fi
+            git commit -m "deploy: set production images to ${IMAGE_TAG} [skip ci]"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push rejected. Retrying against the new main."
+            git reset --hard origin/main
+          done
+          echo "Could not push the production image tag."
+          exit 1

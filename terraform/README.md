@@ -13,7 +13,7 @@ writes into `kops/` from `kops/cluster.yaml`.
 | `iam.tf` | GitHub Actions role, and IRSA for External Secrets, ExternalDNS and backups |
 | `github.tf` | Actions variables and the `production` environment |
 | `platform.tf` | Helm releases, on the second apply |
-| `modules/platform` | External Secrets, ExternalDNS, Loki, Prometheus, Grafana, Promtail |
+| `modules/platform` | External Secrets, ExternalDNS, Loki, Prometheus, Grafana, Promtail, Argo CD, the AgriBridge Application |
 
 kOps also installs the AWS Load Balancer Controller, the EBS CSI driver and
 the pod-identity webhook. The launch templates have no SSH key. `sshAccess`
@@ -26,7 +26,11 @@ the load balancer group `agribridge`, because Calico pod IPs are not routable
 from the VPC. Anonymous access and sign-up are off. The username and password
 are the `admin_user` and `admin_password` keys in Secrets Manager
 `agribridge/grafana`. Prometheus has no Ingress. The app is
-https://production.agribridge.deuces.dev.
+https://production.agribridge.deuces.dev. Argo CD is
+https://argocd.agribridge.deuces.dev, with the same NodePort and instance-target
+pattern. The username is `admin`. Read the generated password with
+`terraform output -raw argocd_admin_password_command` and run that command.
+The password is not in git.
 
 Removing a Helm release from `modules/platform` uninstalls it on the next
 `terraform apply -var install_platform=true`. Leave the address in state so
@@ -34,10 +38,9 @@ Terraform can destroy it. `install_platform` has to stay true on that apply.
 The default is false, and a false value drops the whole platform module for
 that run.
 
-Deploy jobs run `kops export kubeconfig --admin`. The admin credential is in
-the kOps state bucket. The GitHub role can read that bucket. That is
-cluster-admin access, and it is the reason the pipeline does not need a
-kubeconfig secret or SSH.
+The GitHub role can run `kops export kubeconfig --admin`. The admin credential
+is in the kOps state bucket. That is cluster-admin access. The image-tag job
+does not assume the role. It pushes a commit, and Argo CD applies it.
 
 ## What stays outside this root
 
