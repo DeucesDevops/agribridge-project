@@ -23,6 +23,7 @@ locals {
 
   production_hostname = "production.${var.zone_name}"
   grafana_hostname    = "grafana.${var.zone_name}"
+  argocd_hostname     = "argocd.${var.zone_name}"
 
   # kOps pod-identity webhook puts audience amazonaws.com on the token.
   # The load balancer controller and the EBS driver roles are in the kOps output.

@@ -26,8 +26,10 @@ data "aws_iam_policy_document" "github_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Image push runs on main and uses the ref subject.
-    # Deploy jobs use a GitHub environment, so their subject is the environment name.
+    # A job on main uses the ref subject.
+    # A job that names the production environment uses the environment subject.
+    # The image-tag job does not assume this role. The subjects stay so a
+    # protected production job can still export a kubeconfig.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
