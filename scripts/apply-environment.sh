@@ -94,7 +94,7 @@ import_github 'github_repository_environment.production[0]' \
   "environments/production" "${REPO_NAME}:production"
 
 for name in AWS_ROLE_ARN AWS_REGION ACM_CERTIFICATE_ARN KOPS_CLUSTER_NAME KOPS_STATE_STORE \
-  ZONE_NAME PRODUCTION_URL GRAFANA_URL BACKUP_BUCKET BACKUP_ROLE_PRODUCTION
+  ZONE_NAME PRODUCTION_URL GRAFANA_URL ARGOCD_URL BACKUP_BUCKET BACKUP_ROLE_PRODUCTION
 do
   import_github "github_actions_variable.this[\"${name}\"]" \
     "actions/variables/${name}" "${REPO_NAME}:${name}"
@@ -132,3 +132,5 @@ terraform -chdir=terraform apply -var install_platform=true
 
 echo "Grafana password:"
 echo "aws secretsmanager get-secret-value --secret-id agribridge/grafana --query SecretString --output text"
+echo "Argo CD username is admin. Read the generated password on your machine:"
+echo "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo"

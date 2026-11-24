@@ -38,6 +38,15 @@ output "grafana_hostname" {
   value = local.grafana_hostname
 }
 
+output "argocd_hostname" {
+  value = local.argocd_hostname
+}
+
+output "argocd_admin_password_command" {
+  description = "Reads the generated Argo CD admin password. The username is admin. This prints the password, so run it on your machine and do not paste the output into git."
+  value       = "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo"
+}
+
 output "certificate_arn" {
   description = "Terraform writes this to the GitHub variable ACM_CERTIFICATE_ARN."
   value       = aws_acm_certificate_validation.app.certificate_arn

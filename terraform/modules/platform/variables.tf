@@ -19,6 +19,26 @@ variable "grafana_admin_password" {
   sensitive = true
 }
 
+variable "argocd_hostname" {
+  type = string
+}
+
+variable "production_hostname" {
+  type = string
+}
+
+variable "github_repository" {
+  type = string
+}
+
+variable "backup_bucket" {
+  type = string
+}
+
+variable "backup_role_arn" {
+  type = string
+}
+
 variable "external_secrets_role_arn" {
   type = string
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Remove the environment. A plain terraform destroy is the wrong first command.
-# The application Ingress is not in Terraform, ExternalDNS does not delete the
+# Argo CD owns the application. Delete that Application while Argo CD is still
+# running so its finalizer removes the Ingress. ExternalDNS does not delete the
 # records it created, and the kOps buckets are marked prevent_destroy.
 set -euo pipefail
 
@@ -17,6 +18,7 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 
 if kops export kubeconfig --admin --name "$KOPS_CLUSTER_NAME" >/dev/null 2>&1; then
+  kubectl delete application agribridge --namespace argocd --wait=true --timeout=180s || true
   helm uninstall agribridge --namespace agribridge-production || true
   echo "Waiting for Kubernetes load balancers to disappear."
   for _ in $(seq 1 30); do
