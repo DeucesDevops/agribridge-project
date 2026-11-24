@@ -24,6 +24,12 @@ check:
 	$(PYTHON) -m unittest discover -s sonarqube -p 'test_*.py' -v
 	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py' -v
 	terraform fmt -check -recursive terraform
+	terraform -chdir=terraform/environments/production init -backend=false -input=false -lockfile=readonly
+	terraform -chdir=terraform/environments/production validate -no-color
+	terraform -chdir=terraform/environments/dev init -backend=false -input=false -lockfile=readonly
+	terraform -chdir=terraform/environments/dev validate -no-color
+	terraform -chdir=terraform/bootstrap init -backend=false -input=false -lockfile=readonly
+	terraform -chdir=terraform/bootstrap validate -no-color
 	helm lint helm/agribridge
 	helm lint helm/agribridge-application
 	helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml >/dev/null

@@ -60,8 +60,8 @@ Pull requests and `dev` finish after the image scan and SBOM.
 
 The cluster spec is [`kops/cluster.yaml`](../kops/cluster.yaml). kOps 1.36.2
 renders it with `kops update cluster --target=terraform` into
-[`terraform/kops`](../terraform/kops), and Terraform creates what that file
-describes: the VPC, one `t3.medium` control plane, two `t3.large` workers,
+[`terraform/modules/cluster`](../terraform/modules/cluster) and [`terraform/modules/network`](../terraform/modules/network), and Terraform creates what those files
+describe: the VPC, one `t3.medium` control plane, two `t3.large` workers,
 encrypted root disks, no SSH key, the API on port 443, Calico, the EBS CSI
 driver, the AWS Load Balancer Controller and the service-account issuer.
 The issuer is `https://agribridge-oidc-237258628535.s3.us-east-1.amazonaws.com`
@@ -157,6 +157,8 @@ API does not export spans.
 ## What this repository does not contain
 
 An NGINX ingress controller, a Network Load Balancer, Fluent Bit,
-CloudWatch Logs, composite GitHub Actions, and extra Terraform roots are not
-part of this design. Argo CD Image Updater is not installed. The pipeline
-commits the tag itself, after the production approval.
+CloudWatch Logs, and composite GitHub Actions are not part of this design.
+Terraform roots are `environments/production`, `environments/dev`, and
+`bootstrap`. `scripts/apply-environment.sh` applies production. Argo CD Image
+Updater is not installed. The pipeline commits the tag itself, after the
+production approval.

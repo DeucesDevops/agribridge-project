@@ -9,7 +9,7 @@ Jobs run in this order. A failure stops everything after it.
 | Gitleaks | Scans the Git history for secrets |
 | SonarQube | Quality gate on `main`, only when the token and URL are set. Otherwise the job succeeds and says it was skipped |
 | Trivy filesystem scan | Fails on high or critical findings in `api/` and `frontend/` |
-| Checkov and configuration | `terraform fmt`, `terraform validate`, `helm lint`, then Checkov on Terraform, the rendered chart and both Dockerfiles |
+| Checkov and configuration | `terraform fmt`, then `terraform validate` for production, dev, and bootstrap, `helm lint`, then Checkov on Terraform, the rendered chart and both Dockerfiles |
 | Build, scan, SBOM and push | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to Docker Hub on `main` |
 | Publish production image tags | Waits for the `production` environment, then commits the image tag on `main` |
 

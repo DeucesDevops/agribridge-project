@@ -1,132 +1,47 @@
 # Terraform
 
-This root creates the environment. The cluster itself is the Terraform kOps
-writes into `kops/` from `kops/cluster.yaml`.
-
-| File | What it creates |
-|---|---|
-| `kops/kubernetes.tf` | VPC, instances, security groups, kOps IAM, issuer, node configuration objects |
-| `cluster.tf` | The module call for that output |
-| `dns.tf` | Public Route 53 zone, ACM certificate, validation records |
-| `buckets.tf` | kOps state bucket, OIDC discovery bucket, private backup bucket |
-| `secrets.tf` | Production and Grafana secrets |
-| `iam.tf` | GitHub Actions role, and IRSA for External Secrets, ExternalDNS and backups |
-| `github.tf` | Actions variables and the `production` environment |
-| `platform.tf` | Helm releases, on the second apply |
-| `modules/platform` | External Secrets, ExternalDNS, Loki, Prometheus, Grafana, Promtail, Argo CD, the AgriBridge Application |
-
-kOps also installs the AWS Load Balancer Controller, the EBS CSI driver and
-the pod-identity webhook. The launch templates have no SSH key. `sshAccess`
-in the cluster spec is empty. The API security group allows 443 from the
-internet so GitHub-hosted runners can deploy. Authentication is still required.
-
-Grafana is https://grafana.agribridge.deuces.dev on the same load balancer.
-The Grafana Service is a NodePort and the Ingress uses instance targets, in
-the load balancer group `agribridge`, because Calico pod IPs are not routable
-from the VPC. Anonymous access and sign-up are off. The username and password
-are the `admin_user` and `admin_password` keys in Secrets Manager
-`agribridge/grafana`. Prometheus has no Ingress. The app is
-https://production.agribridge.deuces.dev. Argo CD is
-https://argocd.agribridge.deuces.dev, with the same NodePort and instance-target
-pattern. The username is `admin`. Read the generated password with
-`terraform output -raw argocd_admin_password_command` and run that command.
-The password is not in git.
-
-Removing a Helm release from `modules/platform` uninstalls it on the next
-`terraform apply -var install_platform=true`. Leave the address in state so
-Terraform can destroy it. `install_platform` has to stay true on that apply.
-The default is false, and a false value drops the whole platform module for
-that run.
-
-The GitHub role can run `kops export kubeconfig --admin`. The admin credential
-is in the kOps state bucket. That is cluster-admin access. The image-tag job
-does not assume the role. It pushes a commit, and Argo CD applies it.
-
-## What stays outside this root
-
-The Terraform state bucket is created by `scripts/bootstrap-state.sh`.
-Terraform stores its state there, so it cannot create that bucket itself.
-The bucket is versioned, encrypted and private. State holds the generated
-passwords. That is why the bucket is not in git. It is not `kops-state-607`.
-
-The parent domain `deuces.dev` is delegated at the registrar. Terraform prints
-`name_servers`. Someone has to publish those at the registrar.
-
-`GITHUB_TOKEN`, the Docker Hub token and the optional SonarQube token are
-credentials for accounts this root does not own.
-
-## Apply
-
-```sh
-export GITHUB_TOKEN=...
-export KOPS_STATE_STORE=s3://kops-state-607
-./scripts/apply-environment.sh
+```
+terraform/
+├── modules/
+│   ├── network/          # VPC, public subnets, internet gateway, route tables
+│   ├── cluster/          # control plane, node groups, IAM, security groups
+│   │   ├── main.tf
+│   │   ├── iam.tf
+│   │   ├── security-groups.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── dns/              # Route 53 zone, ACM certificate, validation records
+│   ├── storage/          # S3 buckets, backups, KMS, Secrets Manager
+│   ├── identity/         # GitHub OIDC, CI role, IRSA roles
+│   └── platform/         # Helm: external-dns, Argo CD, monitoring
+│       ├── main.tf
+│       ├── argocd.tf
+│       ├── monitoring.tf
+│       └── values/
+├── environments/
+│   ├── dev/
+│   │   ├── main.tf
+│   │   ├── backend.hcl
+│   │   ├── providers.tf
+│   │   └── terraform.tfvars
+│   └── production/
+│       ├── main.tf
+│       ├── backend.hcl
+│       ├── providers.tf
+│       └── terraform.tfvars
+└── bootstrap/            # state bucket, local state, applied first
+    └── main.tf
 ```
 
-That creates the zone and the kOps buckets, asks you to delegate DNS, then:
+kOps renders one file. `scripts/render-kops-terraform.sh` writes it and
+`scripts/patch_kops_terraform.py` splits the VPC and routes into `modules/network`
+and the instances, IAM, and security groups into `modules/cluster`. The subnets
+are public, so the network module has no NAT gateway. The AWS Load Balancer
+Controller is installed by kOps, not by a second Helm release.
 
-```sh
-./scripts/render-kops-terraform.sh
-terraform -chdir=terraform apply -var install_platform=false
-kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
-kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
-terraform -chdir=terraform apply -var install_platform=true
-```
-
-If validate times out because a resolver cached `NXDOMAIN` for
-`api.k8s.agribridge.deuces.dev` while DNS was propagating, wait and run
-validate again, then run the `install_platform=true` apply. The details are
-in [docs/SETUP.md](../docs/SETUP.md).
-
-`render-kops-terraform.sh` runs `kops update cluster --target=terraform` and
-then `scripts/patch_kops_terraform.py`. The patch points the launch templates
-at the AMI data source, drops the public object ACL, and removes the provider
-blocks so this root can pass them in. Run the render before apply. It writes
-the certificates into the state bucket, and the node configuration in
-`terraform/kops` has to match those certificates.
-
-## Existing state
-
-`kops-state-607` and `agribridge-oidc-237258628535` stay in this root. If
-they are already in the state file, leave them there. If they exist in AWS
-and not in state, import them:
-
-```sh
-terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
-terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
-```
-
-`scripts/apply-environment.sh` imports the zone, the two kOps buckets, and the
-GitHub settings. It does not import an ACM certificate or the backup bucket
-that already exist in the account. Adopt those before apply, and only when
-they are missing from state:
-
-```sh
-CERT_ARN=$(aws acm list-certificates --region us-east-1 \
-  --query "CertificateSummaryList[?DomainName=='agribridge.deuces.dev'].CertificateArn | [0]" \
-  --output text)
-if [ -n "$CERT_ARN" ] && [ "$CERT_ARN" != "None" ]; then
-  terraform -chdir=terraform import aws_acm_certificate.app "$CERT_ARN"
-fi
-terraform -chdir=terraform import aws_s3_bucket.backups agribridge-backups-237258628535
-```
-
-The backup bucket name is `agribridge-backups-` plus the account id, unless
-`backup_bucket` is set. This account's bucket is
-`agribridge-backups-237258628535`. Skip an import when the object is already
-in state, or when `list-certificates` returns `None`. Skip the bucket import
-when that bucket is not in the account yet.
-
-The zone used to be a data source. Remove that and import the zone. The
-commands are in [docs/SETUP.md](../docs/SETUP.md). The Terraform state bucket
-`agribridge-tfstate-237258628535` is not a resource here. Point `backend.hcl`
-at it.
-
-## Destroy
-
-Uninstall the application, destroy the platform module while the API still
-answers, delete the ExternalDNS A and TXT records, take the two kOps buckets
-out of state so `prevent_destroy` does not stop the run, then
-`terraform destroy -var install_platform=false`. The exact commands are in
-[docs/SETUP.md](../docs/SETUP.md). The kOps buckets and the Terraform state
-bucket stay in the account.
+`environments/production` is the root `scripts/apply-environment.sh` applies.
+`install_platform=false` builds AWS and the cluster. `install_platform=true`
+adds `module.platform["production"]`. `environments/dev` is a second root with
+its own state key. Its kOps spec is still the production render, so do not
+apply it until `kops/cluster.yaml` describes a dev cluster. Commands and the
+state migration are in [environments/production/README.md](environments/production/README.md).

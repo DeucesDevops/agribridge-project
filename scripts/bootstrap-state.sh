@@ -1,42 +1,47 @@
 #!/usr/bin/env bash
 # Create the Terraform state bucket. Terraform cannot create the bucket it
-# stores its own state in, so this is the one AWS object made by hand.
+# stores its own state in, so this root uses local state. The production and
+# dev roots point backend.hcl at the bucket this script creates.
 set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 BUCKET="${TF_STATE_BUCKET:-agribridge-tfstate-${ACCOUNT}}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BOOTSTRAP="${ROOT}/terraform/bootstrap"
 
+terraform -chdir="$BOOTSTRAP" init -input=false
 if aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
-  echo "State bucket ${BUCKET} already exists."
-else
-  if [ "$REGION" = "us-east-1" ]; then
-    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null
+  if ! terraform -chdir="$BOOTSTRAP" state show aws_s3_bucket.state >/dev/null 2>&1; then
+    echo "Importing existing state bucket ${BUCKET}."
+    terraform -chdir="$BOOTSTRAP" import -input=false \
+      -var "region=${REGION}" -var "bucket_name=${BUCKET}" \
+      aws_s3_bucket.state "$BUCKET"
   else
-    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
-      --create-bucket-configuration "LocationConstraint=${REGION}" >/dev/null
+    echo "State bucket ${BUCKET} is already in the bootstrap state."
   fi
-  echo "Created state bucket ${BUCKET}."
 fi
 
-aws s3api put-bucket-versioning --bucket "$BUCKET" \
-  --versioning-configuration Status=Enabled
-aws s3api put-bucket-encryption --bucket "$BUCKET" \
-  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
-aws s3api put-public-access-block --bucket "$BUCKET" \
-  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+terraform -chdir="$BOOTSTRAP" apply -input=false -auto-approve \
+  -var "region=${REGION}" -var "bucket_name=${BUCKET}"
+BUCKET="$(terraform -chdir="$BOOTSTRAP" output -raw bucket_name)"
 
-BACKEND="${ROOT}/terraform/backend.hcl"
-if [ -f "$BACKEND" ]; then
-  echo "Leaving existing ${BACKEND} in place."
-else
-  cat >"$BACKEND" <<EOF
+write_backend() {
+  local path="$1"
+  local key="$2"
+  if [ -f "$path" ]; then
+    echo "Leaving existing ${path} in place."
+    return
+  fi
+  cat >"$path" <<EOF
 bucket       = "${BUCKET}"
-key          = "agribridge/terraform.tfstate"
+key          = "${key}"
 region       = "${REGION}"
 encrypt      = true
 use_lockfile = true
 EOF
-  echo "Wrote ${BACKEND}."
-fi
+  echo "Wrote ${path}."
+}
+
+write_backend "${ROOT}/terraform/environments/production/backend.hcl" "agribridge/terraform.tfstate"
+write_backend "${ROOT}/terraform/environments/dev/backend.hcl" "agribridge/dev/terraform.tfstate"
