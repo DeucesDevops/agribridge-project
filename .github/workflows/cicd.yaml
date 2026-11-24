@@ -235,7 +235,7 @@ jobs:
             > application.yaml
           grep -q 'prune: true' application.yaml
           grep -q 'selfHeal: true' application.yaml
-          grep -q 'targetRevision: main' application.yaml
+          grep -q 'targetRevision: "main"' application.yaml
           argocd_version="$(sed -n 's/^[[:space:]]*argocd[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' terraform/modules/platform/main.tf)"
           test -n "${argocd_version}"
           helm repo add argo https://argoproj.github.io/argo-helm
@@ -256,7 +256,7 @@ jobs:
                 alb.ingress.kubernetes.io/target-type: instance
                 external-dns.alpha.kubernetes.io/hostname: argocd.agribridge.deuces.dev
           EOF
-          grep -q 'target-type: instance' argocd.yaml
+          grep -q 'target-type: "instance"' argocd.yaml
           grep -q 'argocd.agribridge.deuces.dev' argocd.yaml
           grep -q 'server.insecure: "true"' argocd.yaml
       - name: Install Checkov
