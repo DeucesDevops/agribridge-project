@@ -220,9 +220,13 @@ jobs:
           version: v3.19.0
       - name: Terraform format, init and validate
         run: |
-          terraform -chdir=terraform fmt -check -recursive
-          terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
-          terraform -chdir=terraform validate -no-color
+          terraform fmt -check -recursive terraform
+          terraform -chdir=terraform/environments/production init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=terraform/environments/production validate -no-color
+          terraform -chdir=terraform/environments/dev init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=terraform/environments/dev validate -no-color
+          terraform -chdir=terraform/bootstrap init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=terraform/bootstrap validate -no-color
       - name: Helm lint and render
         run: |
           helm lint helm/agribridge
@@ -242,7 +246,7 @@ jobs:
           helm template argocd argo/argo-cd \
             --version "${argocd_version}" \
             --namespace argocd \
-            --values platform/argocd-values.yaml \
+            --values terraform/modules/platform/values/argocd-values.yaml \
             --values - > argocd.yaml <<'EOF'
           global:
             domain: argocd.agribridge.deuces.dev

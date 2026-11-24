@@ -29,31 +29,31 @@ if kops export kubeconfig --admin --name "$KOPS_CLUSTER_NAME" >/dev/null 2>&1; t
     fi
     sleep 10
   done
-  terraform -chdir=terraform destroy -var install_platform=true -target=module.platform || \
-    echo "If this stopped on the platform module, run: terraform -chdir=terraform state rm 'module.platform'"
+  terraform -chdir=terraform/environments/production destroy -var install_platform=true -target=module.platform || \
+    echo "If this stopped on the platform module, run: terraform -chdir=terraform/environments/production state rm 'module.platform[\"production\"]'"
 else
   echo "The cluster API did not answer. Skipping the Helm uninstall."
 fi
 
-ZONE_ID="$(terraform -chdir=terraform output -raw zone_id 2>/dev/null || true)"
+ZONE_ID="$(terraform -chdir=terraform/environments/production output -raw zone_id 2>/dev/null || true)"
 if [ -n "$ZONE_ID" ]; then
   python3 scripts/route53_cleanup.py "$ZONE_ID" --apply || true
 fi
 
 # These buckets stay in the account. prevent_destroy would stop the destroy.
 for address in \
-  aws_s3_bucket.kops_state \
-  aws_s3_bucket_versioning.kops_state \
-  aws_s3_bucket_server_side_encryption_configuration.kops_state \
-  aws_s3_bucket_public_access_block.kops_state \
-  aws_s3_bucket.discovery \
-  aws_s3_bucket_public_access_block.discovery \
-  aws_s3_bucket_policy.discovery
+  module.storage.aws_s3_bucket.kops_state \
+  module.storage.aws_s3_bucket_versioning.kops_state \
+  module.storage.aws_s3_bucket_server_side_encryption_configuration.kops_state \
+  module.storage.aws_s3_bucket_public_access_block.kops_state \
+  module.storage.aws_s3_bucket.discovery \
+  module.storage.aws_s3_bucket_public_access_block.discovery \
+  module.storage.aws_s3_bucket_policy.discovery
 do
-  terraform -chdir=terraform state rm "$address" || true
+  terraform -chdir=terraform/environments/production state rm "$address" || true
 done
 
-terraform -chdir=terraform destroy -var install_platform=false
+terraform -chdir=terraform/environments/production destroy -var install_platform=false
 
 echo "Kept s3://kops-state-607, s3://agribridge-oidc-237258628535, and the Terraform state bucket."
 echo "Delete the state bucket only after you no longer need the state:"
