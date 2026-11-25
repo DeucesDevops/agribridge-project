@@ -8,7 +8,7 @@ web:
   replicas: 1
 # Public hostname. values-production.yaml sets the live name.
 hostname: production.agribridge.deuces.dev
-# ACM certificate ARN from `terraform output certificate_arn`. Empty keeps the ingress on HTTP.
+# ACM certificate ARN from `terraform -chdir=terraform/environments/production output -raw certificate_arn`. Empty keeps the ingress on HTTP.
 certificateArn: ""
 region: us-east-1
 secretName: agribridge/production

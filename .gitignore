@@ -17,5 +17,7 @@ reports/
 !*.auto.tfvars.example
 backend.hcl
 !terraform/environments/*/backend.hcl
+# Written by scripts/terraform-validate.sh and removed after the cluster check.
+terraform/modules/cluster/validate-providers.tf
 .runtime/
 generated_images/

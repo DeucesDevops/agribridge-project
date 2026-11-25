@@ -1,9 +1,11 @@
 # Bootstrap
 
-Creates the Terraform state bucket. The production environment stores its
-state in this bucket, so this root keeps local state and cannot use that
-backend. `scripts/bootstrap-state.sh` runs `terraform apply` here and writes
-`terraform/environments/production/backend.hcl` when that file is missing.
+Creates the Terraform state bucket. The production and dev environments store
+their state in this bucket, so this root keeps local state and cannot use that
+backend. A rebuild starts with `scripts/bootstrap-state.sh`. The script runs
+`terraform -chdir=terraform/bootstrap apply` and writes
+`terraform/environments/production/backend.hcl` and
+`terraform/environments/dev/backend.hcl` when a file is missing.
 
 The bucket is versioned, encrypted with AES256, and blocked from public
 access. `prevent_destroy` is set. Tear down does not delete it. Remove it

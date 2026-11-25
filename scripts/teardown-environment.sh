@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Remove the environment. A plain terraform destroy is the wrong first command.
+# Remove the environment. terraform -chdir=terraform/environments/production destroy
+# is the wrong first command.
 # Argo CD owns the application. Delete that Application while Argo CD is still
 # running so its finalizer removes the Ingress. ExternalDNS does not delete the
 # records it created, and the kOps buckets are marked prevent_destroy.

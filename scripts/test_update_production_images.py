@@ -3,7 +3,7 @@ import unittest
 from update_production_images import ImageUpdateError, update_images
 
 
-SAMPLE = """# hostname must match terraform output production_hostname.
+SAMPLE = """# hostname must match `terraform -chdir=terraform/environments/production output -raw production_hostname`.
 hostname: production.agribridge.deuces.dev
 api:
   repository: docker.io/macroni607/agribridge-api

@@ -61,9 +61,13 @@ and the author is DeucesDevops. Argo CD tracks `main` and syncs the chart.
 Pull requests and pushes to `dev` stop after the scans. They do not push images
 or change the production tag.
 
-kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) into
-Terraform with `kops update cluster --target=terraform`, and `terraform apply`
-creates it: the VPC, one `t3.medium` control plane, two `t3.large` workers,
+kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) with
+`kops update cluster --target=terraform`. `scripts/render-kops-terraform.sh`
+writes that render and `scripts/patch_kops_terraform.py` splits the VPC and
+routes into `terraform/modules/network` and the instances, IAM, and security
+groups into `terraform/modules/cluster`.
+`terraform -chdir=terraform/environments/production apply` creates the VPC,
+one `t3.medium` control plane, two `t3.large` workers,
 the EBS CSI driver, the AWS Load Balancer Controller, and the service-account
 issuer. The same root creates the public DNS zone, the certificate, the Secrets
 Manager secrets, the backup bucket, the GitHub Actions variables and
@@ -93,7 +97,7 @@ the secret `argocd-initial-admin-secret`. Read it on your machine:
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
 ```
 
-The same command is `terraform output argocd_admin_password_command`. Do not
+The same command is `terraform -chdir=terraform/environments/production output -raw argocd_admin_password_command`. Do not
 paste the password into git, issues, or chat. The Application `agribridge`
 tracks `main` at `helm/agribridge`, with automated sync, prune and selfHeal.
 
@@ -177,8 +181,9 @@ npm run test:coverage --prefix frontend
 npm run build --prefix frontend
 ```
 
-`make check` lints the Helm chart, checks Terraform formatting and runs the
-SonarQube coverage helper tests. It needs Helm, Terraform and Python 3.
+`make check` lints the Helm chart, checks Terraform formatting, validates every
+module and environment, and runs the helper tests. It needs Helm, Terraform
+and Python 3.
 
 ## Cloud delivery
 
@@ -188,10 +193,11 @@ waits for a reviewer on the `production` environment, then commits that image
 tag. Argo CD installs it.
 
 kOps renders the cluster and Terraform creates it, the zone, the certificate,
-the IAM roles and the platform charts. `scripts/bootstrap-state.sh` creates
-the Terraform state bucket, which Terraform needs before it can start. The
-kOps state bucket is separate and is managed by Terraform. Images are
-published to Docker Hub. The exact commands are in [docs/SETUP.md](docs/SETUP.md).
+the IAM roles and the platform charts. A rebuild starts with
+`scripts/bootstrap-state.sh`, which creates the Terraform state bucket before
+the production root can init. The kOps state bucket is separate and is managed
+by Terraform. Images are published to Docker Hub. The exact commands are in
+[docs/SETUP.md](docs/SETUP.md).
 
 | Guide | Contents |
 |---|---|
@@ -211,6 +217,27 @@ published to Docker Hub. The exact commands are in [docs/SETUP.md](docs/SETUP.md
 | `helm/agribridge/` | Application chart, including the production backup |
 | `helm/agribridge-application/` | Argo CD Application for that chart |
 | `terraform/modules/platform/values/` | Storage class and observability Helm values |
-| `scripts/` | State bucket, apply, restore and teardown |
+| `scripts/` | State bucket, validate, apply, restore and teardown |
 | `sonarqube/` | Optional local SonarQube |
 | `docs/` | Setup, pipeline and architecture |
+
+Terraform is arranged by purpose. Run it from the repository root with `-chdir`.
+A rebuild starts with `scripts/bootstrap-state.sh`, then production.
+
+```
+terraform/
+├── bootstrap/            # state bucket, local state, first
+├── modules/
+│   ├── network/          # VPC, public subnets, routes, no NAT
+│   ├── cluster/          # control plane, nodes, IAM, security groups
+│   ├── dns/
+│   ├── storage/
+│   ├── identity/
+│   └── platform/         # Helm releases on the second apply
+└── environments/
+    ├── production/       # root scripts/apply-environment.sh applies
+    └── dev/              # separate state key
+```
+
+`scripts/apply-environment.sh` applies production in two steps:
+`install_platform=false`, then `install_platform=true`.

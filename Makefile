@@ -7,7 +7,7 @@ help:
 		'AgriBridge local commands:' \
 		'  make local        Build and start Compose' \
 		'  make stop         Stop Compose and keep database data' \
-		'  make check        Helm lint, Terraform fmt, SonarQube helper tests' \
+		'  make check        Helm lint, Terraform fmt and validate, helper tests' \
 		'  make sonar-up     Start local SonarQube' \
 		'  make sonar-scan   Run coverage and a local SonarQube scan' \
 		'  make sonar-down   Stop SonarQube and keep its data' \
@@ -23,13 +23,7 @@ stop:
 check:
 	$(PYTHON) -m unittest discover -s sonarqube -p 'test_*.py' -v
 	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py' -v
-	terraform fmt -check -recursive terraform
-	terraform -chdir=terraform/environments/production init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/environments/production validate -no-color
-	terraform -chdir=terraform/environments/dev init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/environments/dev validate -no-color
-	terraform -chdir=terraform/bootstrap init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/bootstrap validate -no-color
+	./scripts/terraform-validate.sh
 	helm lint helm/agribridge
 	helm lint helm/agribridge-application
 	helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml >/dev/null

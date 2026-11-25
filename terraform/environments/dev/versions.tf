@@ -1,8 +1,8 @@
 terraform {
   required_version = ">= 1.10"
 
-  # Partial backend. Copy backend.hcl.example and pass it at init.
-  # terraform init -backend-config=backend.hcl
+  # Partial backend. scripts/bootstrap-state.sh writes backend.hcl.
+  # terraform -chdir=terraform/environments/dev init -backend-config=backend.hcl
   backend "s3" {}
 
   required_providers {

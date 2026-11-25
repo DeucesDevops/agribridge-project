@@ -1,4 +1,4 @@
-# hostname must match terraform output production_hostname.
+# hostname must match `terraform -chdir=terraform/environments/production output -raw production_hostname`.
 # The Argo CD Application also sets hostname, region, certificateArn,
 # backup.bucket and backup.roleArn from Terraform. Those parameters win.
 hostname: production.agribridge.deuces.dev

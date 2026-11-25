@@ -84,7 +84,23 @@ The same root also creates:
 - the platform Helm releases, on a second apply with `install_platform=true`: Argo CD, external-secrets, external-dns, kube-prometheus-stack, Loki, and Promtail
 
 `scripts/bootstrap-state.sh` creates the Terraform state bucket. Terraform
-needs that bucket before the first `init`, so it cannot create it.
+needs that bucket before the first `init`, so it cannot create it. A rebuild
+starts with that script, then `terraform/environments/production`.
+
+```
+terraform/
+├── bootstrap/            # state bucket, local state, first
+├── modules/
+│   ├── network/          # VPC, public subnets, routes, no NAT
+│   ├── cluster/          # control plane, nodes, IAM, security groups
+│   ├── dns/              # zone and certificate
+│   ├── storage/          # buckets, KMS, Secrets Manager
+│   ├── identity/         # GitHub OIDC, CI role, IRSA
+│   └── platform/         # Helm releases on the second apply
+└── environments/
+    ├── production/       # root scripts/apply-environment.sh applies
+    └── dev/              # separate state key
+```
 
 ## Traffic and secrets
 

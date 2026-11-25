@@ -23,9 +23,28 @@ Open http://localhost:8080 and sign in with a demo account from the root README.
 
 ## Stage 2. Create the Terraform state bucket
 
+A rebuild starts with `scripts/bootstrap-state.sh`.
+
+```
+terraform/
+├── bootstrap/                  # this stage, local state
+├── modules/
+│   ├── network/                # VPC, public subnets, routes, no NAT
+│   ├── cluster/                # control plane, nodes, IAM, security groups
+│   ├── dns/                    # zone and certificate
+│   ├── storage/                # buckets, KMS, Secrets Manager
+│   ├── identity/               # GitHub OIDC, CI role, IRSA
+│   └── platform/               # Helm releases on the second apply
+└── environments/
+    ├── production/             # root the apply script runs
+    └── dev/                    # separate state key
+```
+
 The production and dev roots store their state in this bucket, so they cannot
 create it. `terraform/bootstrap` creates it and keeps its own local state. It
-is not the kOps state bucket.
+is not the kOps state bucket. Run later Terraform commands from the repository
+root with `-chdir` pointed at `terraform/environments/production` or
+`terraform/bootstrap`.
 
 ```sh
 export GITHUB_TOKEN=...   # classic repo scope, or fine-grained Actions + Administration write
@@ -51,7 +70,7 @@ state store `s3://kops-state-607`, issuer bucket
 `kops update cluster --target=terraform`. `scripts/patch_kops_terraform.py`
 splits the VPC, subnets, and routes into `terraform/modules/network` and the
 instances, IAM, and security groups into `terraform/modules/cluster`. The
-subnets are public, so there is no NAT gateway. `terraform apply` creates
+subnets are public, so there is no NAT gateway. `terraform -chdir=terraform/environments/production apply` creates
 that network, the instances, the security groups and the IAM, and uploads the
 node configuration into the state bucket.
 
@@ -108,7 +127,7 @@ Merge this GitOps change to `main` before that second apply. Argo CD tracks
 `main`. If `main` still runs `helm upgrade` while Argo CD is installed, the
 two writers will fight. `selfHeal` puts the cluster back to git.
 
-`install_platform` defaults to false. A plain `terraform apply` builds the
+`install_platform` defaults to false. `terraform -chdir=terraform/environments/production apply` builds the
 AWS resources and leaves the charts alone.
 
 ### Existing account
@@ -125,7 +144,7 @@ export KOPS_STATE_STORE=s3://kops-state-607
 ./scripts/apply-environment.sh
 ```
 
-The same imports by hand, after `terraform init`:
+The same imports by hand:
 
 ```sh
 terraform -chdir=terraform/environments/production init -backend-config=backend.hcl
@@ -319,7 +338,7 @@ kubectl -n agribridge-production wait --for=condition=complete job/agribridge-ba
 Roll an image back by committing the previous tag, as the GitOps demo above
 describes. That is the rollback that survives `selfHeal`.
 
-Tear down with `scripts/teardown-environment.sh`. A plain `terraform destroy`
+Tear down with `scripts/teardown-environment.sh`. `terraform -chdir=terraform/environments/production destroy`
 is the wrong first command. Argo CD owns the application. While that
 Application exists, `selfHeal` recreates the Ingress. Delete the Application
 first, while Argo CD is still running, so the finalizer removes the Ingress

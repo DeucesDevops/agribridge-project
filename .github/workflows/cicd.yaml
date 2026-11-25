@@ -218,15 +218,10 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.19.0
+      # fmt -check -recursive, then init -backend=false and validate for every
+      # module, both environments, and bootstrap.
       - name: Terraform format, init and validate
-        run: |
-          terraform fmt -check -recursive terraform
-          terraform -chdir=terraform/environments/production init -backend=false -input=false -lockfile=readonly
-          terraform -chdir=terraform/environments/production validate -no-color
-          terraform -chdir=terraform/environments/dev init -backend=false -input=false -lockfile=readonly
-          terraform -chdir=terraform/environments/dev validate -no-color
-          terraform -chdir=terraform/bootstrap init -backend=false -input=false -lockfile=readonly
-          terraform -chdir=terraform/bootstrap validate -no-color
+        run: ./scripts/terraform-validate.sh
       - name: Helm lint and render
         run: |
           helm lint helm/agribridge

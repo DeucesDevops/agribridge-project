@@ -8,10 +8,10 @@ blocks live here, not in the modules.
 |---|---|
 | `dns` | Public Route 53 zone, ACM certificate, validation records |
 | `storage` | kOps state bucket, OIDC discovery bucket, backup bucket, KMS, Secrets Manager |
-| `cluster` | kOps-rendered VPC, instances, security groups, node IAM, issuer |
+| `network` | VPC, public subnets, internet gateway, route table. No NAT |
+| `cluster` | Control plane, node groups, security groups, node IAM, issuer |
 | `identity` | GitHub OIDC provider, Actions role, IRSA, Actions variables |
 | `platform` | Helm releases, only when `install_platform` is true |
-| `network` | VPC, public subnets, internet gateway, route table. No NAT |
 
 kOps also installs the AWS Load Balancer Controller, the EBS CSI driver and
 the pod-identity webhook. The launch templates have no SSH key. `sshAccess`
@@ -27,11 +27,11 @@ are the `admin_user` and `admin_password` keys in Secrets Manager
 https://production.agribridge.deuces.dev. Argo CD is
 https://argocd.agribridge.deuces.dev, with the same NodePort and instance-target
 pattern. The username is `admin`. Read the generated password with
-`terraform output -raw argocd_admin_password_command` and run that command.
+`terraform -chdir=terraform/environments/production output -raw argocd_admin_password_command` and run that command.
 The password is not in git.
 
 Removing a Helm release from `modules/platform` uninstalls it on the next
-`terraform apply -var install_platform=true`. Leave the address in state so
+`terraform -chdir=terraform/environments/production apply -var install_platform=true`. Leave the address in state so
 Terraform can destroy it. `install_platform` has to stay true on that apply.
 The default is false, and a false value drops the whole platform module for
 that run. The module address is `module.platform["production"]`.
@@ -127,6 +127,6 @@ at it.
 Uninstall the application, destroy the platform module while the API still
 answers, delete the ExternalDNS A and TXT records, take the two kOps buckets
 out of state so `prevent_destroy` does not stop the run, then
-`terraform destroy -var install_platform=false`. The exact commands are in
+`terraform -chdir=terraform/environments/production destroy -var install_platform=false`. The exact commands are in
 [docs/SETUP.md](../../../docs/SETUP.md). The kOps buckets and the Terraform state
 bucket stay in the account.

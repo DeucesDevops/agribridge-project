@@ -13,6 +13,10 @@ The VPC and subnets live in `../network`. This module takes their ids as
 variables. `aws.files` is passed from the environment root for the objects
 kOps uploads. There is no provider or backend block here.
 
+`scripts/terraform-validate.sh` writes `validate-providers.tf` with the
+default AWS provider and `aws.files`, validates this directory, and deletes
+that file before it validates the environment roots.
+
 `scripts/render-kops-terraform.sh` writes kOps output to `kubernetes.tf` in
 this directory, then `scripts/patch_kops_terraform.py` splits that file into
 the ones above and deletes `kubernetes.tf`. Re-render after
