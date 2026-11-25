@@ -108,8 +108,8 @@ OpenTelemetry in the API, plus Tempo. Neither is installed.
 | Data | PostgreSQL and Redis in `agribridge-production` |
 | Local | Docker Compose |
 | Chart | `helm/agribridge` with `values-production.yaml`, synced by Argo CD |
-| Cluster | kOps `k8s.agribridge.deuces.dev`, rendered to Terraform in `terraform/kops` |
-| AWS around the cluster | `terraform/`: zone, certificate, secrets, backup bucket, GitHub, IRSA, platform charts |
+| Cluster | kOps `k8s.agribridge.deuces.dev`, rendered into `terraform/modules/network` and `terraform/modules/cluster` |
+| AWS around the cluster | `terraform/environments/production`: zone, certificate, secrets, backup bucket, GitHub, IRSA, platform charts |
 | Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
 | Delivery | Approved commit of the image tag on `main`, then Argo CD |
 | Traffic | Route 53 and ACM to one ALB, then the web, Grafana and Argo CD NodePorts |
@@ -117,10 +117,10 @@ OpenTelemetry in the API, plus Tempo. Neither is installed.
 | Observability | Prometheus, Grafana, Loki, Promtail |
 
 The repository does not include an NGINX ingress or a Network Load
-Balancer, Fluent Bit or CloudWatch logs, composite actions, or separate
-Terraform roots. Build the cloud environment in the order in
-[docs/SETUP.md](docs/SETUP.md). The longer explanation is
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Balancer, Fluent Bit or CloudWatch logs, or composite actions. Terraform
+roots are production, dev, and the state-bucket bootstrap. Build the cloud
+environment in the order in [docs/SETUP.md](docs/SETUP.md). The longer
+explanation is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start
 
@@ -207,10 +207,10 @@ published to Docker Hub. The exact commands are in [docs/SETUP.md](docs/SETUP.md
 | `frontend/`, `api/` | Application source and tests |
 | `.github/workflows/cicd.yaml` | The only delivery workflow |
 | `kops/` | kOps cluster spec |
-| `terraform/` | Rendered kOps cluster, DNS, secrets, backup bucket, IAM, platform charts |
+| `terraform/` | Modules, production and dev roots, and the state-bucket bootstrap |
 | `helm/agribridge/` | Application chart, including the production backup |
 | `helm/agribridge-application/` | Argo CD Application for that chart |
-| `platform/` | Storage class and observability Helm values |
+| `terraform/modules/platform/values/` | Storage class and observability Helm values |
 | `scripts/` | State bucket, apply, restore and teardown |
 | `sonarqube/` | Optional local SonarQube |
 | `docs/` | Setup, pipeline and architecture |

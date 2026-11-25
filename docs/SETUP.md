@@ -23,20 +23,21 @@ Open http://localhost:8080 and sign in with a demo account from the root README.
 
 ## Stage 2. Create the Terraform state bucket
 
-This is the one AWS object Terraform does not create. Terraform stores its
-own state there, so the bucket has to exist before `terraform init`. It is
-not the kOps state bucket.
+The production and dev roots store their state in this bucket, so they cannot
+create it. `terraform/bootstrap` creates it and keeps its own local state. It
+is not the kOps state bucket.
 
 ```sh
 export GITHUB_TOKEN=...   # classic repo scope, or fine-grained Actions + Administration write
 ./scripts/bootstrap-state.sh
 ```
 
-The script creates `agribridge-tfstate-<account-id>` with versioning,
-encryption and Block Public Access, and writes `terraform/backend.hcl` when
-that file is missing. The existing bucket for this account is
-`agribridge-tfstate-237258628535`. Leave it. The script sees that it is
-already there.
+The script applies `terraform/bootstrap`. That creates `agribridge-tfstate-<account-id>`
+with versioning, encryption and Block Public Access. It writes
+`terraform/environments/production/backend.hcl` and
+`terraform/environments/dev/backend.hcl` when a file is missing. Those files
+are already in git for this account, so the script leaves them. The bucket is
+`agribridge-tfstate-237258628535`.
 
 `GITHUB_TOKEN` is a credential, in the same way the AWS credentials are.
 Terraform uses it to publish Actions variables. It is not committed.
@@ -46,15 +47,18 @@ Terraform uses it to publish Actions variables. It is not committed.
 The cluster spec is `kops/cluster.yaml`: name `k8s.agribridge.deuces.dev`,
 state store `s3://kops-state-607`, issuer bucket
 `agribridge-oidc-237258628535`. One `t3.medium` control plane and two
-`t3.large` workers. kOps 1.36.2 renders that spec to `terraform/kops` with
-`kops update cluster --target=terraform`. `terraform apply` creates the VPC,
-the instances, the security groups and the IAM, and uploads the node
-configuration into the state bucket.
+`t3.large` workers. kOps 1.36.2 renders that spec with
+`kops update cluster --target=terraform`. `scripts/patch_kops_terraform.py`
+splits the VPC, subnets, and routes into `terraform/modules/network` and the
+instances, IAM, and security groups into `terraform/modules/cluster`. The
+subnets are public, so there is no NAT gateway. `terraform apply` creates
+that network, the instances, the security groups and the IAM, and uploads the
+node configuration into the state bucket.
 
 The render also writes the cluster certificates into the state bucket. Those
 certificates and the Terraform have to come from the same run, so the apply
-script refreshes `terraform/kops` before it applies. Commit the refreshed
-files when the spec changes.
+script refreshes the network and cluster modules before it applies. Commit the
+refreshed files when the spec changes.
 
 ### Fresh account
 
@@ -74,10 +78,10 @@ The second run does this:
 
 ```sh
 ./scripts/render-kops-terraform.sh
-terraform -chdir=terraform apply -var install_platform=false
+terraform -chdir=terraform/environments/production apply -var install_platform=false
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
-terraform -chdir=terraform apply -var install_platform=true
+terraform -chdir=terraform/environments/production apply -var install_platform=true
 ```
 
 `kops validate` can time out while `api.k8s.agribridge.deuces.dev` is still
@@ -90,7 +94,7 @@ these two commands yourself:
 
 ```sh
 kops validate cluster --name k8s.agribridge.deuces.dev --wait 15m
-terraform -chdir=terraform apply -var install_platform=true
+terraform -chdir=terraform/environments/production apply -var install_platform=true
 ```
 
 The first apply creates the certificate, the secrets, the backup bucket, the
@@ -124,11 +128,11 @@ export KOPS_STATE_STORE=s3://kops-state-607
 The same imports by hand, after `terraform init`:
 
 ```sh
-terraform -chdir=terraform init -backend-config=backend.hcl
+terraform -chdir=terraform/environments/production init -backend-config=backend.hcl
 
 # Only if these are not already in the state. Skip an address Terraform cannot find.
-terraform -chdir=terraform import aws_s3_bucket.kops_state kops-state-607
-terraform -chdir=terraform import aws_s3_bucket.discovery agribridge-oidc-237258628535
+terraform -chdir=terraform/environments/production import module.storage.aws_s3_bucket.kops_state kops-state-607
+terraform -chdir=terraform/environments/production import module.storage.aws_s3_bucket.discovery agribridge-oidc-237258628535
 
 # The apply script does not adopt an existing certificate or backup bucket.
 # Import them only when they already exist in this account and are not in state.
@@ -136,29 +140,29 @@ CERT_ARN=$(aws acm list-certificates --region us-east-1 \
   --query "CertificateSummaryList[?DomainName=='agribridge.deuces.dev'].CertificateArn | [0]" \
   --output text)
 if [ -n "$CERT_ARN" ] && [ "$CERT_ARN" != "None" ]; then
-  terraform -chdir=terraform import aws_acm_certificate.app "$CERT_ARN"
+  terraform -chdir=terraform/environments/production import module.dns.aws_acm_certificate.app "$CERT_ARN"
 fi
-terraform -chdir=terraform import aws_s3_bucket.backups agribridge-backups-237258628535
+terraform -chdir=terraform/environments/production import module.storage.aws_s3_bucket.backups agribridge-backups-237258628535
 
 # The zone used to be a data source. Adopt the real zone.
-terraform -chdir=terraform state rm data.aws_route53_zone.app
+terraform -chdir=terraform/environments/production state rm data.aws_route53_zone.app
 ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name agribridge.deuces.dev \
   --query "HostedZones[?Name=='agribridge.deuces.dev.'].Id | [0]" --output text)
-terraform -chdir=terraform import aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
+terraform -chdir=terraform/environments/production import module.dns.aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
 ```
 
 If External Secrets and ExternalDNS were created with `attach_irsa=true`,
 move them off the `[0]` address:
 
 ```sh
-terraform -chdir=terraform state mv 'aws_iam_role.external_secrets[0]' aws_iam_role.external_secrets
-terraform -chdir=terraform state mv 'aws_iam_role_policy.external_secrets[0]' aws_iam_role_policy.external_secrets
-terraform -chdir=terraform state mv 'aws_iam_role.external_dns[0]' aws_iam_role.external_dns
-terraform -chdir=terraform state mv 'aws_iam_role_policy.external_dns[0]' aws_iam_role_policy.external_dns
+terraform -chdir=terraform/environments/production state mv 'aws_iam_role.external_secrets[0]' 'module.identity.aws_iam_role.irsa["external_secrets"]'
+terraform -chdir=terraform/environments/production state mv 'aws_iam_role_policy.external_secrets[0]' 'module.identity.aws_iam_role_policy.irsa["external_secrets"]'
+terraform -chdir=terraform/environments/production state mv 'aws_iam_role.external_dns[0]' 'module.identity.aws_iam_role.irsa["external_dns"]'
+terraform -chdir=terraform/environments/production state mv 'aws_iam_role_policy.external_dns[0]' 'module.identity.aws_iam_role_policy.irsa["external_dns"]'
 ```
 
 There is no cluster to import. The previous machines are gone. Terraform
-creates them again from `terraform/kops`.
+creates them again from `terraform/modules/cluster`.
 
 ```sh
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
@@ -333,16 +337,16 @@ export KOPS_STATE_STORE=s3://kops-state-607
 kops export kubeconfig --admin --name k8s.agribridge.deuces.dev
 kubectl delete application agribridge --namespace argocd --wait=true --timeout=180s
 helm uninstall agribridge --namespace agribridge-production
-terraform -chdir=terraform destroy -var install_platform=true -target=module.platform
-python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform output -raw zone_id)" --apply
-terraform -chdir=terraform state rm aws_s3_bucket.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_versioning.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_server_side_encryption_configuration.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.kops_state
-terraform -chdir=terraform state rm aws_s3_bucket.discovery
-terraform -chdir=terraform state rm aws_s3_bucket_public_access_block.discovery
-terraform -chdir=terraform state rm aws_s3_bucket_policy.discovery
-terraform -chdir=terraform destroy -var install_platform=false
+terraform -chdir=terraform/environments/production destroy -var install_platform=true -target=module.platform
+python3 scripts/route53_cleanup.py "$(terraform -chdir=terraform/environments/production output -raw zone_id)" --apply
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket.kops_state
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket_versioning.kops_state
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket_server_side_encryption_configuration.kops_state
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket_public_access_block.kops_state
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket.discovery
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket_public_access_block.discovery
+terraform -chdir=terraform/environments/production state rm module.storage.aws_s3_bucket_policy.discovery
+terraform -chdir=terraform/environments/production destroy -var install_platform=false
 ```
 
 `state rm` keeps `kops-state-607` and `agribridge-oidc-237258628535` in the
@@ -360,6 +364,6 @@ If destroy stops because the platform module is still recorded and the API is
 already gone:
 
 ```sh
-terraform -chdir=terraform state rm 'module.platform'
-terraform -chdir=terraform destroy -var install_platform=false
+terraform -chdir=terraform/environments/production state rm 'module.platform["production"]'
+terraform -chdir=terraform/environments/production destroy -var install_platform=false
 ```

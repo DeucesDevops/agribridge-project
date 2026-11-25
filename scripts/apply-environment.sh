@@ -21,16 +21,16 @@ command -v kops >/dev/null
 
 aws sts get-caller-identity >/dev/null
 ./scripts/bootstrap-state.sh
-terraform -chdir=terraform init -backend-config=backend.hcl -input=false
+terraform -chdir=terraform/environments/production init -backend-config=backend.hcl -input=false
 
 in_state() {
-  terraform -chdir=terraform state show "$1" >/dev/null 2>&1
+  terraform -chdir=terraform/environments/production state show "$1" >/dev/null 2>&1
 }
 
 forget() {
   if in_state "$1"; then
     echo "Removing ${1} from state."
-    terraform -chdir=terraform state rm "$1"
+    terraform -chdir=terraform/environments/production state rm "$1"
   fi
 }
 
@@ -39,7 +39,7 @@ move() {
   local to="$2"
   if in_state "$from" && ! in_state "$to"; then
     echo "Moving state ${from} -> ${to}"
-    terraform -chdir=terraform state mv "$from" "$to"
+    terraform -chdir=terraform/environments/production state mv "$from" "$to"
   fi
 }
 
@@ -47,10 +47,14 @@ move() {
 forget data.aws_route53_zone.app
 forget 'data.aws_iam_openid_connect_provider.kops[0]'
 
-move 'aws_iam_role.external_secrets[0]' aws_iam_role.external_secrets
-move 'aws_iam_role_policy.external_secrets[0]' aws_iam_role_policy.external_secrets
-move 'aws_iam_role.external_dns[0]' aws_iam_role.external_dns
-move 'aws_iam_role_policy.external_dns[0]' aws_iam_role_policy.external_dns
+move 'aws_iam_role.external_secrets[0]' 'module.identity.aws_iam_role.irsa["external_secrets"]'
+move 'aws_iam_role.external_secrets' 'module.identity.aws_iam_role.irsa["external_secrets"]'
+move 'aws_iam_role_policy.external_secrets[0]' 'module.identity.aws_iam_role_policy.irsa["external_secrets"]'
+move 'aws_iam_role_policy.external_secrets' 'module.identity.aws_iam_role_policy.irsa["external_secrets"]'
+move 'aws_iam_role.external_dns[0]' 'module.identity.aws_iam_role.irsa["external_dns"]'
+move 'aws_iam_role.external_dns' 'module.identity.aws_iam_role.irsa["external_dns"]'
+move 'aws_iam_role_policy.external_dns[0]' 'module.identity.aws_iam_role_policy.irsa["external_dns"]'
+move 'aws_iam_role_policy.external_dns' 'module.identity.aws_iam_role_policy.irsa["external_dns"]'
 
 import_bucket() {
   local address="$1"
@@ -60,17 +64,17 @@ import_bucket() {
   fi
   if aws s3api head-bucket --bucket "$name" >/dev/null 2>&1; then
     echo "Importing ${name} as ${address}."
-    terraform -chdir=terraform import "$address" "$name"
+    terraform -chdir=terraform/environments/production import "$address" "$name"
   fi
 }
 
-import_bucket aws_s3_bucket.kops_state kops-state-607
-import_bucket aws_s3_bucket.discovery agribridge-oidc-237258628535
+import_bucket module.storage.aws_s3_bucket.kops_state kops-state-607
+import_bucket module.storage.aws_s3_bucket.discovery agribridge-oidc-237258628535
 
 ZONE_ID="$(aws route53 list-hosted-zones-by-name --dns-name "$ZONE_NAME" \
   --query "HostedZones[?Name=='${ZONE_NAME}.'].Id | [0]" --output text)"
-if [ -n "$ZONE_ID" ] && [ "$ZONE_ID" != "None" ] && ! in_state aws_route53_zone.app; then
-  terraform -chdir=terraform import aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
+if [ -n "$ZONE_ID" ] && [ "$ZONE_ID" != "None" ] && ! in_state module.dns.aws_route53_zone.app; then
+  terraform -chdir=terraform/environments/production import module.dns.aws_route53_zone.app "${ZONE_ID#/hostedzone/}"
 fi
 
 import_github() {
@@ -86,30 +90,30 @@ import_github() {
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/repos/${REPO}/${api_path}")"
   if [ "$code" = "200" ]; then
-    terraform -chdir=terraform import "$address" "$import_id"
+    terraform -chdir=terraform/environments/production import "$address" "$import_id"
   fi
 }
 
-import_github 'github_repository_environment.production[0]' \
+import_github 'module.identity.github_repository_environment.production["production"]' \
   "environments/production" "${REPO_NAME}:production"
 
 for name in AWS_ROLE_ARN AWS_REGION ACM_CERTIFICATE_ARN KOPS_CLUSTER_NAME KOPS_STATE_STORE \
   ZONE_NAME PRODUCTION_URL GRAFANA_URL ARGOCD_URL BACKUP_BUCKET BACKUP_ROLE_PRODUCTION
 do
-  import_github "github_actions_variable.this[\"${name}\"]" \
+  import_github "module.identity.github_actions_variable.this[\"${name}\"]" \
     "actions/variables/${name}" "${REPO_NAME}:${name}"
 done
 
 # Buckets and the zone first, so kOps can store certificates and find the zone.
-terraform -chdir=terraform apply -var install_platform=false \
-  -target=aws_route53_zone.app \
-  -target=aws_s3_bucket_policy.discovery \
-  -target=aws_s3_bucket_public_access_block.kops_state \
-  -target=aws_s3_bucket_versioning.kops_state \
-  -target=aws_s3_bucket_server_side_encryption_configuration.kops_state
+terraform -chdir=terraform/environments/production apply -var install_platform=false \
+  -target=module.dns.aws_route53_zone.app \
+  -target=module.storage.aws_s3_bucket_policy.discovery \
+  -target=module.storage.aws_s3_bucket_public_access_block.kops_state \
+  -target=module.storage.aws_s3_bucket_versioning.kops_state \
+  -target=module.storage.aws_s3_bucket_server_side_encryption_configuration.kops_state
 
 echo "Route 53 name servers for ${ZONE_NAME}:"
-terraform -chdir=terraform output name_servers
+terraform -chdir=terraform/environments/production output name_servers
 
 if [ "${AGRIBRIDGE_DNS_READY:-}" != "1" ]; then
   if ! command -v dig >/dev/null 2>&1; then
@@ -117,7 +121,7 @@ if [ "${AGRIBRIDGE_DNS_READY:-}" != "1" ]; then
     exit 2
   fi
   actual="$(dig +short NS "$ZONE_NAME" | sed 's/\.$//' | tr '[:upper:]' '[:lower:]' | sort)"
-  expected="$(terraform -chdir=terraform output -json name_servers | python3 -c 'import json,sys; print("\n".join(sorted(item.rstrip(".").lower() for item in json.load(sys.stdin))))')"
+  expected="$(terraform -chdir=terraform/environments/production output -json name_servers | python3 -c 'import json,sys; print("\n".join(sorted(item.rstrip(".").lower() for item in json.load(sys.stdin))))')"
   if [ "$actual" != "$expected" ]; then
     echo "Delegate those name servers at the registrar for the parent domain, wait until they answer, then run this script again."
     exit 2
@@ -125,10 +129,10 @@ if [ "${AGRIBRIDGE_DNS_READY:-}" != "1" ]; then
 fi
 
 ./scripts/render-kops-terraform.sh
-terraform -chdir=terraform apply -var install_platform=false
+terraform -chdir=terraform/environments/production apply -var install_platform=false
 kops export kubeconfig --admin --name "$KOPS_CLUSTER_NAME"
 kops validate cluster --name "$KOPS_CLUSTER_NAME" --wait 15m
-terraform -chdir=terraform apply -var install_platform=true
+terraform -chdir=terraform/environments/production apply -var install_platform=true
 
 echo "Grafana password:"
 echo "aws secretsmanager get-secret-value --secret-id agribridge/grafana --query SecretString --output text"

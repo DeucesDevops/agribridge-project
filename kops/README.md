@@ -1,8 +1,10 @@
 # kOps cluster
 
 `cluster.yaml` is the cluster spec. kOps 1.36.2 turns it into Terraform with
-`scripts/render-kops-terraform.sh`, and `terraform apply` creates the VPC, the
-instances and the IAM. The state bucket is `s3://kops-state-607`. The
+`scripts/render-kops-terraform.sh`. The patch script puts the VPC, public
+subnets, and routes in `terraform/modules/network` and the instances, IAM, and
+security groups in `terraform/modules/cluster`. There is no NAT gateway.
+`terraform apply` creates them. The state bucket is `s3://kops-state-607`. The
 service-account issuer is published to `s3://agribridge-oidc-237258628535`.
 
 The control plane is one `t3.medium`. The workers are two `t3.large` nodes,
