@@ -40,7 +40,7 @@ jobs:
       API_IMAGE_REPOSITORY: ${{ inputs.api_image }}
       WEB_IMAGE_REPOSITORY: ${{ inputs.web_image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
