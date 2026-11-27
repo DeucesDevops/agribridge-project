@@ -28,7 +28,7 @@
     "redis": "4.7.0"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.1",
     "eslint": "9.39.5",
     "supertest": "7.1.4",
     "vitest": "5.0.5"
