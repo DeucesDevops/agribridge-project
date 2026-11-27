@@ -27,7 +27,7 @@ jobs:
       api_image: ${{ steps.publish.outputs.api_image }}
       web_image: ${{ steps.publish.outputs.web_image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the API and web images
         env:
           DOCKER_BUILDKIT: "1"
