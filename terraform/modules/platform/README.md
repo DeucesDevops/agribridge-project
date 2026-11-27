@@ -9,13 +9,13 @@ not install a second copy of the load balancer controller.
 |---|---|---|---|
 | `external-secrets` | external-secrets/external-secrets | 2.15.0 | IRSA role |
 | `external-dns` | external-dns/external-dns | 1.23.0 | zone filter, `upsert-only`, IRSA role |
-| `loki` | grafana/loki | 7.6.0 | `values/loki-values.yaml` |
-| `monitoring` | prometheus-community/kube-prometheus-stack | 93.3.1 | `values/prometheus-values.yaml` plus the Grafana Ingress |
-| `promtail` | grafana/promtail | 6.17.1 | `values/promtail-values.yaml` |
-| `argocd` | argo/argo-cd | 10.18.2 | `values/argocd-values.yaml` plus the hostname and certificate |
+| `loki` | grafana/loki | 7.6.0 | `platform/monitoring-values.yaml` key `loki` |
+| `monitoring` | prometheus-community/kube-prometheus-stack | 93.3.1 | `platform/monitoring-values.yaml` key `prometheus`, plus the Grafana Ingress |
+| `promtail` | grafana/promtail | 6.17.1 | `platform/monitoring-values.yaml` key `promtail` |
+| `argocd` | argo/argo-cd | 10.18.2 | `platform/argocd-values.yaml` plus the hostname and certificate |
 | `agribridge-application` | `helm/agribridge-application` | chart in this repo | Application `agribridge`, after Argo CD |
 
-`values/storage-class.yaml` is the `gp3` class. Terraform reads that file and
+`platform/storage-class.yaml` is the `gp3` class. Terraform reads that file and
 creates it. The EBS CSI driver from kOps provisions the volumes.
 
 The production root passes `install_platform=true` on the second apply. That
@@ -37,5 +37,7 @@ The username is `admin`. The password is generated into
 configured in the production root. This module has no provider or backend
 blocks.
 
-Chart versions live in `main.tf`. The CI workflow reads the `argocd` version
-from that file when it renders the Argo CD chart.
+Chart versions live in `main.tf`. The security workflow reads the `argocd` version
+from that file when it renders the Argo CD chart. API alerts and the Grafana
+dashboard come from `observability/`. External Secrets operator values come
+from `platform/external-secrets/values.yaml`. The role ARN is still set here.

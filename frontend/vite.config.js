@@ -16,9 +16,8 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // In local development the API runs separately; in the cluster nginx
-    // proxies /api to the api Service, so the frontend code never needs to
-    // know an API hostname in either case.
+    // Vite proxies /api to the API process. The container image uses nginx
+    // for the same proxy, so the frontend never needs an API hostname.
     proxy: {
       '/api': { target: process.env.API_URL || 'http://localhost:3000', changeOrigin: true },
     },

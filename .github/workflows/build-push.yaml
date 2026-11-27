@@ -1,0 +1,128 @@
+# Build both images, scan them, write CycloneDX SBOMs, and push to Docker Hub.
+# Push runs on main when the Docker Hub secrets are set.
+# After a push, deploy.yaml waits on the production environment and commits
+# the image tag for Argo CD.
+
+name: Build and push
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  API_IMAGE_REPOSITORY: ${{ vars.API_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-api' }}
+  WEB_IMAGE_REPOSITORY: ${{ vars.WEB_IMAGE_REPOSITORY || 'docker.io/macroni607/agribridge-web' }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build:
+    name: Build, scan, SBOM and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      pushed: ${{ steps.publish.outputs.pushed }}
+      api_image: ${{ steps.publish.outputs.api_image }}
+      web_image: ${{ steps.publish.outputs.web_image }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the API and web images
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          built="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          for name in api web; do
+            context="api"
+            if [ "${name}" = "web" ]; then
+              context="frontend"
+            fi
+            docker build \
+              --build-arg "APP_VERSION=${IMAGE_TAG}" \
+              --build-arg "GIT_SHA=${IMAGE_TAG}" \
+              --build-arg "BUILD_DATE=${built}" \
+              --build-arg "IMAGE_TAG=${IMAGE_TAG}" \
+              -t "agribridge-${name}:${IMAGE_TAG}" \
+              "${context}"
+          done
+      - name: Trivy scan the API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-api:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: Trivy scan the web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-web:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: SBOM for the API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-api:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: api-sbom.cdx.json
+          exit-code: "0"
+      - name: SBOM for the web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: agribridge-web:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: web-sbom.cdx.json
+          exit-code: "0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: "*-sbom.cdx.json"
+          if-no-files-found: error
+      - name: Push images to Docker Hub
+        id: publish
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          {
+            echo "pushed=false"
+            echo "api_image="
+            echo "web_image="
+          } >> "${GITHUB_OUTPUT}"
+          if [ "${GITHUB_REF}" != "refs/heads/main" ] || [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "Images were scanned and were not pushed."
+            exit 0
+          fi
+          if [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; then
+            echo "DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set. Images were scanned. Push and deploy stay off until both secrets are set."
+            exit 0
+          fi
+          echo "${DOCKERHUB_TOKEN}" | docker login --username "${DOCKERHUB_USERNAME}" --password-stdin
+          docker tag "agribridge-api:${IMAGE_TAG}" "${API_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker tag "agribridge-web:${IMAGE_TAG}" "${WEB_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${API_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          docker push "${WEB_IMAGE_REPOSITORY}:${IMAGE_TAG}"
+          {
+            echo "pushed=true"
+            echo "api_image=${API_IMAGE_REPOSITORY}"
+            echo "web_image=${WEB_IMAGE_REPOSITORY}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Images are on Docker Hub. The production environment approval commits this tag for Argo CD."
+
+  deploy:
+    name: Publish production image tags
+    needs: build
+    if: needs.build.outputs.pushed == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      image_tag: ${{ github.sha }}
+      api_image: ${{ needs.build.outputs.api_image }}
+      web_image: ${{ needs.build.outputs.web_image }}
+    secrets: inherit

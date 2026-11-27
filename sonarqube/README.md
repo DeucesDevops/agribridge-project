@@ -14,7 +14,7 @@ runtime, and this folder does not provision or contact AWS.
 | `sonar-project.properties` | One `agribridge` project, analysis scope, coverage import and quality-gate enforcement |
 | `prepare-coverage.py` | Validates and combines component LCOV reports using repository-relative source paths |
 | `test_coverage.py` | Checks path mapping, report combination and missing/invalid coverage failures |
-| `../.github/workflows/cicd.yaml` | Optional SonarQube job. It runs on main only when both settings below are present |
+| `../.github/workflows/security.yaml` | Optional SonarQube job. It runs on main only when both settings below are present |
 
 The analysis includes API JavaScript, frontend JavaScript/JSX/CSS, authored
 Terraform, both application Dockerfiles and the application Compose definition,

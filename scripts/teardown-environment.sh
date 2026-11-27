@@ -7,10 +7,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-REGION="${AWS_REGION:-us-east-1}"
-export AWS_REGION
-export KOPS_STATE_STORE="${KOPS_STATE_STORE:-s3://kops-state-607}"
-export KOPS_CLUSTER_NAME="${KOPS_CLUSTER_NAME:-k8s.agribridge.deuces.dev}"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/common.sh"
+REGION="${AWS_REGION}"
 
 if [ -z "${GITHUB_TOKEN:-}" ]; then
   echo "Export GITHUB_TOKEN. Terraform removes the Actions variables and environments it created."

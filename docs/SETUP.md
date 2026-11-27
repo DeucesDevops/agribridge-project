@@ -1,5 +1,11 @@
 # Setup
 
+A rebuild of the AWS environment starts with `scripts/bootstrap-state.sh`.
+That script creates the Terraform state bucket. The production root stores
+its state in that bucket, so it cannot create the bucket itself. Locking uses
+Terraform's S3 native lockfile (`use_lockfile = true` in `backend.hcl`). There
+is no DynamoDB lock table.
+
 Build the project in this order. Each stage has a check you can run before
 the next one. Commands assume the repository root, `us-east-1`, and kOps 1.36.2.
 
@@ -8,8 +14,12 @@ and Docker before you start. Nothing in this setup opens an SSH session.
 `sshAccess` in `kops/cluster.yaml` is empty, and the launch templates have no
 SSH key.
 
-`scripts/apply-environment.sh` runs stages 2 and 3. The commands below are
-the same steps, written out so each one can be run on its own.
+`scripts/apply-environment.sh` runs stages 2 and 3 in two stages. `infra`
+creates the state bucket, DNS, network, and cluster. `platform` installs the
+add-ons after the API answers. With no argument it runs infra and then
+platform. The commands below are the same steps, written out so each one can
+be run on its own. Runbooks for backup, rollback, and teardown are in
+`docs/RUNBOOKS/`.
 
 ## Stage 1. Run the app locally
 
@@ -195,7 +205,7 @@ so the nodes can pull them.
 You can delete an old `CLUSTER_NAME` variable. The workflow reads
 `KOPS_CLUSTER_NAME`.
 
-Push to `main`, or re-run the **CI/CD** workflow there. The run lints, tests,
+Push to `main`, or re-run the **CI** workflow there. The run lints, tests,
 scans, builds, and pushes both images to Docker Hub. It then waits on the
 production environment. Approve that environment in GitHub. That approval is
 the human gate. The job then commits the image tag to
@@ -255,7 +265,7 @@ only. A push to `dev` does not change production.
 
 1. Change something visible. A string on the dashboard is enough.
 2. Open a pull request into `dev`, merge it, then merge `dev` into `main`.
-3. Wait until **CI/CD** on that `main` commit has pushed the images. The job
+3. Wait until **CI** on that `main` commit has pushed the images. The job
    **Publish production image tags** stays yellow until you approve the
    `production` environment.
 4. Approve it. The job commits `deploy: set production images to <sha> [skip ci]`

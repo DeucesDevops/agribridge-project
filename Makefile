@@ -1,18 +1,20 @@
 .DEFAULT_GOAL := help
 PYTHON ?= python3
-.PHONY: help local stop check sonar-up sonar-scan sonar-down
+.PHONY: help local stop validate plan apply teardown test
 
 help:
 	@printf '%s\n' \
-		'AgriBridge local commands:' \
+		'AgriBridge commands:' \
 		'  make local        Build and start Compose' \
 		'  make stop         Stop Compose and keep database data' \
-		'  make check        Helm lint, Terraform fmt, SonarQube helper tests' \
-		'  make sonar-up     Start local SonarQube' \
-		'  make sonar-scan   Run coverage and a local SonarQube scan' \
-		'  make sonar-down   Stop SonarQube and keep its data' \
+		'  make validate     Terraform fmt, init, validate, Helm, shellcheck, actionlint' \
+		'  make plan         Plan the production root. Talks to AWS. Does not apply' \
+		'  make apply        Create the environment: infra and cluster, then platform' \
+		'  make teardown     Remove the environment. Keeps the state buckets' \
+		'  make test         Unit tests for the API, the web app, and the scripts' \
 		'' \
-		'Cloud setup is docs/SETUP.md. The pipeline is .github/workflows/cicd.yaml.'
+		'A cloud rebuild starts with scripts/bootstrap-state.sh. See docs/SETUP.md.' \
+		'plan and apply talk to AWS. validate does not.'
 
 local:
 	docker compose up --build -d --wait
@@ -20,29 +22,27 @@ local:
 stop:
 	docker compose down
 
-check:
-	$(PYTHON) -m unittest discover -s sonarqube -p 'test_*.py' -v
-	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py' -v
-	terraform fmt -check -recursive terraform
-	terraform -chdir=terraform/environments/production init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/environments/production validate -no-color
-	terraform -chdir=terraform/environments/dev init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/environments/dev validate -no-color
-	terraform -chdir=terraform/bootstrap init -backend=false -input=false -lockfile=readonly
-	terraform -chdir=terraform/bootstrap validate -no-color
+validate:
+	./scripts/terraform-validate.sh
 	helm lint helm/agribridge
 	helm lint helm/agribridge-application
 	helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml >/dev/null
 	helm template agribridge-application helm/agribridge-application --namespace argocd >/dev/null
+	shellcheck scripts/*.sh scripts/lib/*.sh tests/smoke/*.sh
+	actionlint
 
-sonar-up:
-	docker compose --env-file sonarqube/.env -f sonarqube/compose.yaml up -d --wait --wait-timeout 360 db sonarqube
+plan:
+	terraform -chdir=terraform/environments/production init -backend-config=backend.hcl -input=false
+	terraform -chdir=terraform/environments/production plan -input=false -var install_platform=false
 
-sonar-scan:
-	npm run test:coverage --prefix api
-	npm run test:coverage --prefix frontend
-	$(PYTHON) sonarqube/prepare-coverage.py
-	docker compose --env-file sonarqube/.env -f sonarqube/compose.yaml --profile scan run --rm scanner
+apply:
+	./scripts/apply-environment.sh
 
-sonar-down:
-	docker compose --env-file sonarqube/.env -f sonarqube/compose.yaml down
+teardown:
+	./scripts/teardown-environment.sh
+
+test:
+	$(PYTHON) -m unittest discover -s scripts -p 'test_*.py' -v
+	$(PYTHON) -m unittest discover -s sonarqube -p 'test_*.py' -v
+	npm test --prefix api
+	npm test --prefix frontend

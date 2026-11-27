@@ -2,9 +2,8 @@
  * Thin API client.
  *
  * All requests are relative to the current origin. In development Vite proxies
- * /api to the API; in the cluster nginx proxies it to the api Service. The
- * frontend therefore has no build-time knowledge of any hostname, which is why
- * the same image runs unchanged in staging and production.
+ * /api to the API. The container image uses nginx for the same proxy. The
+ * frontend therefore has no build-time knowledge of an API hostname.
  */
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -14,8 +13,7 @@ class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
     this.status = status;
-    // Surfaced in the UI so a user can quote it to support and you can find the
-    // exact request in Loki.
+    // Surfaced in the UI so a user can quote it when asking for help.
     this.requestId = requestId;
   }
 }

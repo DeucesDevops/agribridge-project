@@ -1,24 +1,26 @@
 # Pipeline
 
-The workflow is [`.github/workflows/cicd.yaml`](../.github/workflows/cicd.yaml).
-Jobs run in this order. A failure stops everything after it.
+[`.github/workflows/ci.yaml`](../.github/workflows/ci.yaml) is the entry point.
+It calls the other workflows in this order. A failure stops everything after it.
 
-| Job | What it does |
+| Workflow | What it does |
 |---|---|
-| Lint and test | ESLint, unit tests, coverage, API tests against PostgreSQL, and the JUnit report |
-| Gitleaks | Scans the Git history for secrets |
-| SonarQube | Quality gate on `main`, only when the token and URL are set. Otherwise the job succeeds and says it was skipped |
-| Trivy filesystem scan | Fails on high or critical findings in `api/` and `frontend/` |
-| Checkov and configuration | `terraform fmt`, then `terraform validate` for production, dev, and bootstrap, `helm lint`, then Checkov on Terraform, the rendered chart and both Dockerfiles |
-| Build, scan, SBOM and push | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to Docker Hub on `main` |
-| Publish production image tags | Waits for the `production` environment, then commits the image tag on `main` |
+| [ci.yaml](../.github/workflows/ci.yaml) | ESLint, unit tests, coverage, API tests against PostgreSQL, and the JUnit report |
+| [security.yaml](../.github/workflows/security.yaml) | Gitleaks, SonarQube, Trivy filesystem scan, Helm lint, and Checkov |
+| [terraform.yaml](../.github/workflows/terraform.yaml) | `terraform fmt -check -recursive`, then `init -backend=false` and `validate` for every module and root |
+| [build-push.yaml](../.github/workflows/build-push.yaml) | Builds both images, scans them with Trivy, writes CycloneDX SBOMs, and pushes to Docker Hub on `main` |
+| [deploy.yaml](../.github/workflows/deploy.yaml) | Waits for the `production` environment, then commits the image tag on `main` |
+
+SonarQube is the quality gate on `main`, only when the token and URL are set.
+Otherwise that job succeeds and says it was skipped. Trivy fails on high or
+critical findings in `api/` and `frontend/`. Checkov runs after Helm lint.
 
 Pull requests and pushes to `dev` run through the image scan. They do not push
 images or change the production tag. A push to `main` pushes the images, then
 waits for the production environment before it writes the tag. Argo CD syncs
-the commit. The job does not call AWS or Helm.
+the commit. The deploy job does not call AWS or Helm.
 
-Checkov runs a short starter list in [`.github/checkov.yaml`](../.github/checkov.yaml).
+Checkov runs a short starter list in [`config/policies/checkov.yaml`](../config/policies/checkov.yaml).
 It scans the Terraform in this repository.
 
 ## GitHub settings

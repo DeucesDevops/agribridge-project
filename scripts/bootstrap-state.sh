@@ -4,10 +4,12 @@
 # dev roots point backend.hcl at the bucket this script creates.
 set -euo pipefail
 
-REGION="${AWS_REGION:-us-east-1}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/common.sh"
+REGION="${AWS_REGION}"
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 BUCKET="${TF_STATE_BUCKET:-agribridge-tfstate-${ACCOUNT}}"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BOOTSTRAP="${ROOT}/terraform/bootstrap"
 
 terraform -chdir="$BOOTSTRAP" init -input=false

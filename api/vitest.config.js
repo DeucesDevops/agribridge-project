@@ -14,9 +14,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
-      // The coverage gate the pipeline enforces (FR-17). Scoped to the domain
-      // layer, which is where the business rules that matter actually live -
-      // chasing a percentage across glue code teaches you nothing.
+      // Coverage thresholds for the domain layer, which is where the business
+      // rules live.
       include: ['src/domain/**/*.js'],
       thresholds: {
         lines: 70,

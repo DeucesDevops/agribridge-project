@@ -1,0 +1,161 @@
+# Gitleaks, SonarQube, Trivy, and Checkov.
+# SonarQube is skipped when SONAR_TOKEN or SONAR_HOST_URL is unset, and on
+# every branch except main. Checkov uses config/policies/checkov.yaml.
+# Terraform fmt and validate live in terraform.yaml.
+
+name: Security
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan Git history for secrets
+        run: |
+          curl -fsSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz
+          ./gitleaks detect --source . --redact --verbose
+
+  sonarqube:
+    name: SonarQube
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Skip unless SonarQube is configured on main
+        id: gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        run: |
+          if [ -z "${SONAR_TOKEN}" ] || [ -z "${SONAR_HOST_URL}" ]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "SonarQube skipped. Set the SONAR_TOKEN secret and the SONAR_HOST_URL variable to enable it."
+            exit 0
+          fi
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "SonarQube is configured. Analysis runs on main so the Community Build quality gate stays on one branch."
+            exit 0
+          fi
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: coverage-api
+          path: api/coverage
+      - uses: actions/download-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: coverage-frontend
+          path: frontend/coverage
+      - name: Combine coverage
+        if: steps.gate.outputs.enabled == 'true'
+        run: python3 sonarqube/prepare-coverage.py
+      - name: Analyze and wait for the quality gate
+        if: steps.gate.outputs.enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@v5.2.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: -Dproject.settings=sonarqube/sonar-project.properties
+
+  trivy-fs:
+    name: Trivy filesystem scan
+    needs: sonarqube
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan the API source
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: api
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+      - name: Scan the web source
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+
+  checkov:
+    name: Checkov and configuration
+    needs: trivy-fs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Helm lint and render
+        run: |
+          helm lint helm/agribridge
+          helm lint helm/agribridge-application
+          helm template agribridge helm/agribridge --namespace agribridge-production -f helm/agribridge/values-production.yaml > production.yaml
+          helm template agribridge-application helm/agribridge-application --namespace argocd \
+            --set-string certificateArn=arn:aws:acm:us-east-1:237258628535:certificate/00000000-0000-0000-0000-000000000000 \
+            --set-string backupBucket=agribridge-backups-237258628535 \
+            --set-string backupRoleArn=arn:aws:iam::237258628535:role/agribridge-backup-production \
+            > application.yaml
+          grep -q 'prune: true' application.yaml
+          grep -q 'selfHeal: true' application.yaml
+          grep -q 'targetRevision: "main"' application.yaml
+          argocd_version="$(sed -n 's/^[[:space:]]*argocd[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' terraform/modules/platform/main.tf)"
+          test -n "${argocd_version}"
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm template argocd argo/argo-cd \
+            --version "${argocd_version}" \
+            --namespace argocd \
+            --values platform/argocd-values.yaml \
+            --values - > argocd.yaml <<'EOF'
+          global:
+            domain: argocd.agribridge.deuces.dev
+          configs:
+            cm:
+              url: https://argocd.agribridge.deuces.dev
+          server:
+            ingress:
+              annotations:
+                alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:237258628535:certificate/00000000-0000-0000-0000-000000000000
+                alb.ingress.kubernetes.io/target-type: instance
+                external-dns.alpha.kubernetes.io/hostname: argocd.agribridge.deuces.dev
+          EOF
+          grep -q 'target-type: "instance"' argocd.yaml
+          grep -q 'argocd.agribridge.deuces.dev' argocd.yaml
+          grep -q 'server.insecure: "true"' argocd.yaml
+      - name: Install Checkov
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/checkov"
+          "${RUNNER_TEMP}/checkov/bin/pip" install 'checkov==3.2.449'
+          echo "${RUNNER_TEMP}/checkov/bin" >> "${GITHUB_PATH}"
+      - name: Scan Terraform, the chart and the Dockerfiles
+        run: |
+          checkov --directory terraform --framework terraform --config-file config/policies/checkov.yaml --download-external-modules false
+          checkov --file production.yaml --framework kubernetes --config-file config/policies/checkov.yaml
+          checkov --file application.yaml --framework kubernetes --config-file config/policies/checkov.yaml
+          checkov --directory api --framework dockerfile --config-file config/policies/checkov.yaml
+          checkov --directory frontend --framework dockerfile --config-file config/policies/checkov.yaml

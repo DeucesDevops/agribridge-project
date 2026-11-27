@@ -1,10 +1,9 @@
 /**
  * PostgreSQL access.
  *
- * The database runs as a pod inside the cluster (a StatefulSet with a
- * persistent volume) - see docs/decisions/ADR-008. Every query goes through
- * `query()` so that latency, errors and pool saturation are measured without
- * anyone having to remember to instrument a call site.
+ * Every query goes through `query()` so that latency, errors and pool
+ * saturation are measured without anyone having to remember to instrument a
+ * call site.
  */
 import pg from 'pg';
 import config from './config.js';
@@ -61,8 +60,8 @@ export function samplePoolMetrics() {
 
 /**
  * Run a query, timed and labelled by a logical operation name.
- * The operation label is deliberately low-cardinality - never interpolate an
- * id into it, or you will do to Prometheus what a user_id label does to Loki.
+ * The operation label is deliberately low-cardinality. Never interpolate an
+ * id into it, or each distinct id becomes its own time series.
  */
 export async function query(operation, text, params = []) {
   const end = dbQueryDuration.startTimer({ operation });

@@ -1,5 +1,7 @@
 locals {
-  values_dir = "${path.module}/values"
+  repo_root  = "${path.module}/../../.."
+  values_dir = "${local.repo_root}/platform"
+  monitoring = yamldecode(file("${local.values_dir}/monitoring-values.yaml"))
 
   chart_version = {
     external_secrets = "2.15.0"
@@ -7,7 +9,7 @@ locals {
     loki             = "7.6.0"
     monitoring       = "93.3.1"
     promtail         = "6.17.1"
-    # Keep the CI helm template version in .github/workflows/cicd.yaml in step with this.
+    # Keep the CI helm template version in .github/workflows/security.yaml in step with this.
     argocd = "10.18.2"
   }
 
@@ -32,6 +34,9 @@ locals {
   }
 
   storage_class = yamldecode(file("${local.values_dir}/storage-class.yaml"))
+
+  api_alerts    = yamldecode(file("${local.repo_root}/observability/alerts/api.yaml"))
+  api_dashboard = file("${local.repo_root}/observability/dashboards/api.json")
 
   grafana_values = {
     grafana = {

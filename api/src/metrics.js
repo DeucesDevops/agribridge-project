@@ -1,14 +1,8 @@
 /**
- * The Prometheus metric surface.
+ * Process and business metrics, exposed in Prometheus text format.
  *
- * These metric names are a contract: the Grafana dashboards in
- * observability/grafana/dashboards and the alert rules in
- * observability/prometheus/alert-rules.yaml both depend on them. Rename one
- * here and you break a dashboard - which is exactly why they live in one file.
- *
- * Note the business metrics at the bottom. agribridge_orders_created_total
- * going flat during business hours is a faster, less ambiguous outage signal
- * than any infrastructure metric, and it is what alert A-12 watches.
+ * Names live in this one file so they stay consistent. agribridge_orders_created_total
+ * going flat during business hours is a direct signal that orders have stopped.
  */
 import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from 'prom-client';
 import config from './config.js';
@@ -113,8 +107,8 @@ export const failedLogins = new Counter({
 
 /* --------------------------------------------------------------- build info */
 
-// Value is always 1; the information lives in the labels. This is the metric
-// that lets a Grafana panel answer "which commit is serving traffic?".
+// Value is always 1; the information lives in the labels and records which
+// commit is serving traffic.
 export const buildInfo = new Gauge({
   name: 'agribridge_build_info',
   help: 'Build information for the running instance; value is always 1',

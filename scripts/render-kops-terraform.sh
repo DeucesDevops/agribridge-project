@@ -7,9 +7,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-export AWS_REGION="${AWS_REGION:-us-east-1}"
-export KOPS_STATE_STORE="${KOPS_STATE_STORE:-s3://kops-state-607}"
-CLUSTER="${KOPS_CLUSTER_NAME:-k8s.agribridge.deuces.dev}"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/lib/common.sh"
+CLUSTER="${KOPS_CLUSTER_NAME}"
 OUT="terraform/modules/cluster"
 
 command -v kops >/dev/null
