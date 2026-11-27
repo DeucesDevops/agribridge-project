@@ -79,7 +79,7 @@ jobs:
         run: python3 scripts/junit_summary.py api/reports frontend/reports >> "$GITHUB_STEP_SUMMARY"
       - name: Publish the test report
         if: always()
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v3
         with:
           name: API and web tests
           path: |
