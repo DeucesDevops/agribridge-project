@@ -1,0 +1,13 @@
+# Installed into the argocd namespace by Terraform, after the argo-cd release.
+# Helm parameters below override helm/agribridge for the keys Terraform owns.
+# Image repositories and tags stay in helm/agribridge/values-production.yaml.
+argocdNamespace: argocd
+repoURL: https://github.com/DeucesDevops/agribridge-project.git
+targetRevision: main
+chartPath: helm/agribridge
+destinationNamespace: agribridge-production
+hostname: production.agribridge.deuces.dev
+region: us-east-1
+certificateArn: ""
+backupBucket: ""
+backupRoleArn: ""

@@ -1,0 +1,7 @@
+title = "AgriBridge"
+
+[allowlist]
+description = "Historical notes quote an image digest. That file is not in the working tree."
+paths = [
+  '''docs/REBUILD-SESSION.md''',
+]

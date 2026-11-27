@@ -1,0 +1,25 @@
+# terraform fmt -check -recursive, then init -backend=false and validate
+# for every module and root. There is no plan or apply.
+
+name: Terraform
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Format, init and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.6
+          terraform_wrapper: false
+      - name: Terraform format, init and validate
+        run: ./scripts/terraform-validate.sh

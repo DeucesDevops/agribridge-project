@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    k8s-app: kops-channels
+  name: kops-channels
+  namespace: kube-system
+spec:
+  containers:
+  - args:
+    - apply
+    - channel
+    - --v=4
+    - --yes
+    - --interval=1m0s
+    - --node-name=$(NODE_NAME)
+    - s3://kops-state-607/k8s.agribridge.deuces.dev/addons/bootstrap-channel.yaml
+    env:
+    - name: NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: KUBECONFIG
+      value: /var/lib/kops/kubeconfig
+    - name: HOME
+      value: /tmp
+    - name: AWS_REGION
+      value: us-east-1
+    image: registry.k8s.io/kops/channels:1.36.2@sha256:d54936126aa5af6a28f5df7799a069dba54883c5195232a49f4f2f379102d6e5
+    name: kops-channels
+    readinessProbe:
+      failureThreshold: 2
+      httpGet:
+        host: 127.0.0.1
+        path: /readyz
+        port: 3986
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    resources:
+      requests:
+        cpu: 50m
+        memory: 50Mi
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10013
+    volumeMounts:
+    - mountPath: /var/lib/kops/kubeconfig
+      name: kubeconfig
+      readOnly: true
+  dnsPolicy: Default
+  hostNetwork: true
+  priorityClassName: system-node-critical
+  tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+  volumes:
+  - hostPath:
+      path: /var/lib/kops/kubeconfig
+      type: File
+    name: kubeconfig
+status: {}

@@ -8,5 +8,15 @@ dist/
 coverage/
 .env
 reports/
+.scannerwork/
+.sonar/
+.terraform/
+*.tfstate*
+*.tfplan
+*.auto.tfvars
+!*.auto.tfvars.example
+backend.hcl
+!terraform/environments/*/backend.hcl
+validate-providers.tf
 .runtime/
 generated_images/
