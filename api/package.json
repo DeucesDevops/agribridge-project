@@ -1,7 +1,7 @@
 {
   "name": "agribridge-api",
   "version": "1.0.0",
-  "description": "AgriBridge marketplace API - DevOps capstone reference application",
+  "description": "AgriBridge marketplace API",
   "type": "module",
   "engines": {
     "node": ">=20.11.0"

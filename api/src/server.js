@@ -4,8 +4,8 @@
  * Graceful shutdown is the difference between a rolling update that drops zero
  * requests and one that drops a handful every time. On SIGTERM we stop
  * accepting new connections, let in-flight requests finish, then close the
- * database and cache. Kubernetes gives us terminationGracePeriodSeconds to do
- * it; the chart sets that to comfortably exceed SHUTDOWN_GRACE_MS.
+ * database and cache. SHUTDOWN_GRACE_MS is how long that in-flight work may
+ * take before the process exits.
  */
 import config from './config.js';
 import logger from './logger.js';
@@ -45,9 +45,8 @@ async function start() {
     node: process.version,
   });
 
-  // The StatefulSet may still be running crash recovery when the API starts.
-  // Retrying here, plus a generous startupProbe, is what keeps a cold cluster
-  // from crash-looping its way through the whole demo.
+  // PostgreSQL may still be starting when the API process starts.
+  // Retrying here keeps a cold database from failing startup immediately.
   await waitForDatabase();
 
   if (config.runMigrationsOnStart) await runMigrations();
@@ -66,7 +65,7 @@ async function start() {
     logger.info('listening', { port: config.port });
   });
 
-  // Slightly above typical ingress idle timeouts, to avoid races where the
+  // Slightly above typical reverse-proxy idle timeouts, to avoid races where the
   // proxy reuses a connection the server is closing.
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;

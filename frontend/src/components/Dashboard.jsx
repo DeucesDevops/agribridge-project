@@ -3,9 +3,8 @@ import api from '../api.js';
 import { formatNaira, formatTonnage, cropLabel } from '../format.js';
 
 /**
- * The dashboard. Deliberately the same figures that the API publishes as
- * Prometheus business metrics, so the Grafana business dashboard and this page
- * cannot disagree.
+ * The dashboard. These are the same figures the API publishes as business
+ * metrics, so this page and /metrics stay aligned.
  */
 export default function Dashboard() {
   const [summary, setSummary] = useState(null);

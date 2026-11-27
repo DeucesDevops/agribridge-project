@@ -4,14 +4,13 @@
  *
  * The route label used for metrics comes from Express's matched route pattern
  * (`/api/orders/:id`), never the raw URL. Labelling by raw path would create a
- * new time series per order id and destroy Prometheus - the same
- * high-cardinality mistake as labelling Loki streams by user id.
+ * new time series per order id.
  */
 import { randomUUID } from 'node:crypto';
 import logger, { requestContext } from './logger.js';
 import { httpRequestsTotal, httpRequestDuration, httpRequestsInFlight } from './metrics.js';
 
-/** Accept an inbound correlation id from the ingress, or mint one. */
+/** Accept an inbound correlation id, or mint one. */
 export function requestId(req, res, next) {
   const incoming = req.headers['x-request-id'] || req.headers['x-correlation-id'];
   const id = typeof incoming === 'string' && incoming.length <= 128 ? incoming : randomUUID();
@@ -69,8 +68,8 @@ export function notFound(req, res) {
 /**
  * Terminal error handler. Domain errors carry their own statusCode (see
  * PricingError and TransitionError); anything else is a 500 and gets logged
- * with a stack. The request id goes back to the client so a user can quote it
- * to support and you can find it in Loki immediately.
+ * with a stack. The request id goes back to the client so a caller can quote
+ * it, and the same id is on the log lines for that request.
  */
 export function errorHandler(err, req, res, _next) {
   const status = Number.isInteger(err.statusCode) ? err.statusCode : 500;

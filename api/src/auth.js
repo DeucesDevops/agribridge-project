@@ -1,13 +1,11 @@
 /**
  * Session authentication.
  *
- * A signed JWT carried in an httpOnly cookie. Not because JWTs are fashionable
- * but because it keeps the API stateless, which is what lets you scale the
- * Deployment from two replicas to six without a shared session store.
+ * A signed JWT carried in an httpOnly cookie. The token is self-contained, so
+ * additional API processes do not need a shared session store.
  *
- * The signing secret comes from the environment, which comes from a Kubernetes
- * Secret, which comes from AWS Secrets Manager. It is never in Git, never in
- * the image, and rotating it is demonstrated in the recording.
+ * The signing secret comes from the environment. It is never in Git and never
+ * in the image.
  */
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';

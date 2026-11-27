@@ -1,1 +1,0 @@
-{{ include "agribridge.workload" (dict "root" . "component" "api") }}

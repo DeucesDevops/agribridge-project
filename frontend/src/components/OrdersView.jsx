@@ -118,7 +118,7 @@ export default function OrdersView({ user }) {
                       <td>{event.from_status ? statusLabel(event.from_status) : '—'}</td>
                       <td>{statusLabel(event.to_status)}</td>
                       <td>{timeAgo(event.created_at)}</td>
-                      {/* The request id joins this audit row to the Loki logs. */}
+                      {/* The request id matches the API log line for this change. */}
                       <td className="mono">{(event.request_id || '').slice(0, 8)}</td>
                     </tr>
                   ))}

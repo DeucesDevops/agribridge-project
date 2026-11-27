@@ -2,8 +2,8 @@
  * All configuration arrives from the environment. Nothing is hardcoded and
  * nothing is read from a file that could be baked into an image.
  *
- * Secrets (DB password, JWT secret) come from Kubernetes Secrets that
- * External Secrets fills from AWS Secrets Manager. See helm/agribridge.
+ * Secrets (database password, JWT secret) are environment variables. They
+ * are never committed and never baked into the image.
  */
 
 function required(name) {

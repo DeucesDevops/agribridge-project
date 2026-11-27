@@ -18,8 +18,8 @@ import statsRouter from './routes/stats.js';
 export function createApp() {
   const app = express();
 
-  // Behind Traefik, so the client IP arrives in X-Forwarded-For. Without this
-  // every access log records the ingress pod's address instead of the user's.
+  // Honor X-Forwarded-For when a reverse proxy sits in front of the API.
+  // Without this, every access log records the proxy address instead of the user's.
   if (config.trustProxy) app.set('trust proxy', true);
   app.disable('x-powered-by');
 
@@ -39,8 +39,8 @@ export function createApp() {
     next();
   });
 
-  // Operational endpoints live at the root, not under /api, so the ingress can
-  // route them separately and so probes never depend on API path rewriting.
+  // Operational endpoints live at the root, not under /api, so a reverse proxy
+  // can route them separately and probes never depend on API path rewriting.
   app.use('/', healthRouter);
 
   app.use('/api/auth', authRouter);

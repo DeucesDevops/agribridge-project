@@ -6,14 +6,12 @@
  *
  *   /healthz  - is this process alive? Deliberately does NOT touch the
  *               database. If liveness checked the database, a brief database
- *               blip would make Kubernetes kill every API pod, turning a
- *               recoverable dependency failure into a total outage. That is
- *               almost exactly what happened on Harvest Monday.
+ *               blip would restart the process and turn a recoverable
+ *               dependency failure into an outage.
  *
  *   /readyz   - can this process usefully serve traffic right now? This one
- *               DOES check the database, so a pod with no database is removed
- *               from the Service endpoints and stops receiving requests -
- *               without being restarted.
+ *               DOES check the database, so an instance with no database can
+ *               be taken out of rotation without being restarted.
  */
 import { Router } from 'express';
 import config from '../config.js';
@@ -61,16 +59,14 @@ healthRouter.get('/readyz', asyncRoute(async (_req, res) => {
   });
 }));
 
-/** Prometheus scrape endpoint. */
+/** Process and business metrics in Prometheus text format. */
 healthRouter.get('/metrics', asyncRoute(async (_req, res) => {
   res.set('Content-Type', registry.contentType);
   res.send(await registry.metrics());
 }));
 
 /**
- * Traceability. This endpoint is what turns "which commit is running?" from a
- * discussion into a one-second answer, and it is the last link in the chain
- * the reviewer will ask you to walk: commit -> image -> release -> pod.
+ * Traceability. Reports the build identity injected at image build time.
  */
 healthRouter.get('/version', (_req, res) => {
   res.json({

@@ -9,8 +9,7 @@
 - After merging, synchronize `dev` to the resulting merge commit with a fast-forward;
   do not rewrite branch history or open a reverse pull request.
 
-## Attribution and operations
+## Attribution
 
 - Attribute work performed for the owner to the existing `DeucesDevops` Git identity.
 - Preserve the original authorship of third-party source and automated release commits.
-- Do not provision AWS resources as part of source cleanup or offline validation.
