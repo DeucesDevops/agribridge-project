@@ -7,8 +7,7 @@
  * reached production. A unit test with a mocked database cannot catch that
  * class of failure by construction - only a real connection can.
  *
- * The pipeline runs these against a Postgres service container. Locally:
- *   docker compose up -d postgres
+ * Point PGHOST, PGPORT, PGUSER, PGPASSWORD and PGDATABASE at PostgreSQL, then:
  *   npm run test:integration
  */
 import {

@@ -1,10 +1,8 @@
 /**
  * Structured JSON logging with request-id correlation.
  *
- * Every line is a single JSON object on stdout. Promtail ships it to Loki,
- * where `| json` gives you queryable fields. The request_id field is what
- * makes "show me every log line for this one order" a five-second query
- * instead of an archaeology project - see docs/runbooks/RB-01.
+ * Every line is a single JSON object on stdout. The request_id field ties
+ * the log lines for one request together.
  *
  * Deliberately dependency-free: one small module you can read in full beats
  * a logging framework you have to configure.
@@ -29,8 +27,7 @@ function scrub(value, depth = 0) {
   // Errors must pass through untouched so the replacer below can unpack them.
   // Object.entries() on an Error returns nothing - message and stack are
   // non-enumerable - so scrubbing one would silently flatten it to {} and every
-  // error line would arrive in Loki with no cause. Losing the cause of a failure
-  // is exactly the blindness this platform exists to prevent.
+  // error line would arrive with no cause.
   if (value instanceof Error) return value;
   if (Array.isArray(value)) return value.map((v) => scrub(v, depth + 1));
   const out = {};

@@ -1,10 +1,9 @@
 /**
  * Dashboard aggregates.
  *
- * These are the numbers Adaeze looks at, and they are deliberately the same
- * numbers exposed as Prometheus business metrics. When the API is down the
- * dashboard is empty AND agribridge_orders_created_total goes flat - two
- * independent signals of the same truth.
+ * These figures are the same numbers published as business metrics. When the
+ * API is down the dashboard is empty and agribridge_orders_created_total
+ * stops increasing.
  */
 import { Router } from 'express';
 import { query, queryOne } from '../db.js';
@@ -39,7 +38,7 @@ statsRouter.get('/summary', asyncRoute(async (_req, res) => {
   return res.json(payload);
 }));
 
-/** Orders per crop - drives the funnel panel on the business dashboard. */
+/** Orders per crop. */
 statsRouter.get('/by-crop', asyncRoute(async (_req, res) => {
   const { rows } = await query('stats_by_crop', `
     SELECT l.crop,

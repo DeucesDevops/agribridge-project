@@ -1,130 +1,32 @@
 # AgriBridge
 
-AgriBridge is a grain marketplace. Farmers publish produce, buyers place orders,
-and both can follow an order through fulfilment. The web app is React and Vite.
-The API is Express, with PostgreSQL and Redis.
-
-Local development uses Docker Compose. The cloud environment is a kOps cluster
-on AWS. GitHub Actions builds the images, a reviewer approves production, and
-Argo CD syncs that commit.
+AgriBridge is a grain marketplace. Farmers publish produce, buyers place orders, and both follow an order through fulfilment. The web app is React and Vite. The API is Express. PostgreSQL stores the marketplace data and Redis caches read-heavy responses.
 
 ## Features
 
-- **Farmer workspace:** publish crop lots with quantity, price and location.
-- **Buyer workspace:** browse available produce and place orders.
-- **Order management:** track status changes and order history.
-- **Dashboard:** view marketplace activity and credit eligibility.
-- **Role-based access:** separate farmer and buyer experiences with cookie-based authentication.
+- **Farmer workspace:** publish crop lots with quantity, moisture grade, price and location, and check input-credit eligibility against settled trade.
+- **Buyer workspace:** browse open lots and place orders.
+- **Order management:** move an order through pending, matched, in transit, delivered, settled and cancelled, with an append-only history of each change.
+- **Dashboard:** open lots, tonnage, orders and monthly traded value, including a breakdown by crop.
+- **Role-based access:** farmer, buyer and agent experiences. Sign-in uses an httpOnly cookie. The API does not register new users; accounts come from the demo seed.
 
-## Architecture
+Crops are maize, sorghum, soybean and paddy rice. Prices are in naira. Moisture grade A, B or C changes the price a buyer pays, and the platform fee is 2.5% of that graded value.
 
-![AgriBridge architecture](docs/images/agribridge-architecture.svg)
+## Tech stack
 
-The diagram is the delivery path. kOps renders the cluster into Terraform, and Terraform creates it.
-
-A browser opens [https://production.agribridge.deuces.dev](https://production.agribridge.deuces.dev).
-Route 53 sends that name to one internet-facing Application Load Balancer.
-TLS is the ACM certificate for `agribridge.deuces.dev` and `*.agribridge.deuces.dev`.
-Calico pod IPs are not routable from the VPC, so the load balancer uses
-instance targets and the web Service is a NodePort. NGINX in the web pod
-serves the React app.
-
-The API serves `/healthz`, `/readyz`, `/version`, and `/metrics` at the root,
-not under `/api`. NGINX on the public hostname routes them like this.
-
-| Public path | Who answers |
+| Layer | Choice |
 |---|---|
-| `/` | React app |
-| `/api/` | Proxied to Express. The `/api` prefix is kept |
-| `/healthz` | NGINX itself, body `ok`. This is the load balancer health check |
-| `/readyz` | Proxied to the API. Redis down is reported here and PostgreSQL is still read |
-| `/version` | Proxied to the API |
-| `/metrics` | Not proxied. Prometheus scrapes the API Service inside the cluster |
+| Frontend | React 18 and Vite, served by NGINX in the container image |
+| API | Express on Node.js 22 |
+| Database | PostgreSQL 16 |
+| Cache | Redis 7 |
+| Tests | Vitest |
 
-Express stores data in PostgreSQL and caches in Redis. Sign-in uses the seeded
-accounts. The API has login, logout, and session lookup, and it does not
-register new users.
+The frontend never embeds an API hostname. In development, Vite proxies `/api` to the API. In the container image, NGINX does the same.
 
-Locally, Docker Compose runs the same four processes and loads the demo data.
-In AWS they run from one Helm chart, `helm/agribridge`, with `values.yaml` and
-`values-production.yaml`, in the namespace `agribridge-production`.
-Production sets `SEED_DEMO_DATA=false`. The accounts were loaded once with
-`node`, because the image has no npm. The command is in [docs/SETUP.md](docs/SETUP.md).
+## Run locally with Docker Compose
 
-The workflow file is [`.github/workflows/cicd.yaml`](.github/workflows/cicd.yaml).
-SonarQube runs on `main` only when `SONAR_TOKEN` and `SONAR_HOST_URL` are set.
-On `main`, the images are pushed to `docker.io/macroni607/agribridge-api` and
-`docker.io/macroni607/agribridge-web`. Production waits for the `production`
-GitHub environment. After approval, the workflow commits that image tag into
-`values-production.yaml` on `main`. The commit message contains `[skip ci]`
-and the author is DeucesDevops. Argo CD tracks `main` and syncs the chart.
-Pull requests and pushes to `dev` stop after the scans. They do not push images
-or change the production tag.
-
-kOps renders the cluster from [`kops/cluster.yaml`](kops/cluster.yaml) into
-Terraform with `kops update cluster --target=terraform`, and `terraform apply`
-creates it: the VPC, one `t3.medium` control plane, two `t3.large` workers,
-the EBS CSI driver, the AWS Load Balancer Controller, and the service-account
-issuer. The same root creates the public DNS zone, the certificate, the Secrets
-Manager secrets, the backup bucket, the GitHub Actions variables and
-`production` environment, and the IRSA roles for External Secrets, ExternalDNS
-and the database backup. A second apply, with `install_platform=true`, installs
-External Secrets, ExternalDNS, Argo CD, kube-prometheus-stack, Loki, and Promtail.
-External Secrets copies `PGPASSWORD`, `JWT_SECRET`, and `SEED_PASSWORD` into
-the production namespace. The role trust uses the kOps issuer and the audience
-`amazonaws.com`. Production runs a daily `pg_dump` to S3 at 02:15 UTC. Objects
-expire after 30 days.
-
-Grafana is [https://grafana.agribridge.deuces.dev](https://grafana.agribridge.deuces.dev)
-on that same load balancer. Its Service is a NodePort, the Ingress target type
-is `instance`, and the load balancer group is `agribridge`. Sign in with the
-`admin_user` and `admin_password` keys in Secrets Manager `agribridge/grafana`.
-Anonymous access and sign-up are off. Prometheus stays inside the cluster. Use
-it from Grafana Explore, or open its own UI with
-`kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 9090`.
-
-Argo CD is [https://argocd.agribridge.deuces.dev](https://argocd.agribridge.deuces.dev)
-on that same load balancer. Its Service is a NodePort, the Ingress target type
-is `instance`, and the load balancer group is `agribridge`. TLS ends at the
-load balancer. The username is `admin`. Argo CD generates the password into
-the secret `argocd-initial-admin-secret`. Read it on your machine:
-
-```sh
-kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && echo
-```
-
-The same command is `terraform output argocd_admin_password_command`. Do not
-paste the password into git, issues, or chat. The Application `agribridge`
-tracks `main` at `helm/agribridge`, with automated sync, prune and selfHeal.
-
-Prometheus scrapes the API at `/metrics`. Promtail ships container logs to Loki.
-Grafana reads Prometheus and Loki. Distributed tracing is a later addition:
-OpenTelemetry in the API, plus Tempo. Neither is installed.
-
-| Layer | Where it lives |
-|---|---|
-| Frontend | React and Vite, served by NGINX |
-| API | Express on Node.js |
-| Data | PostgreSQL and Redis in `agribridge-production` |
-| Local | Docker Compose |
-| Chart | `helm/agribridge` with `values-production.yaml`, synced by Argo CD |
-| Cluster | kOps `k8s.agribridge.deuces.dev`, rendered into `terraform/modules/network` and `terraform/modules/cluster` |
-| AWS around the cluster | `terraform/environments/production`: zone, certificate, secrets, backup bucket, GitHub, IRSA, platform charts |
-| Images | Docker Hub `macroni607/agribridge-api` and `macroni607/agribridge-web` |
-| Delivery | Approved commit of the image tag on `main`, then Argo CD |
-| Traffic | Route 53 and ACM to one ALB, then the web, Grafana and Argo CD NodePorts |
-| Secrets | Secrets Manager through External Secrets. Argo CD's admin password is a cluster secret |
-| Observability | Prometheus, Grafana, Loki, Promtail |
-
-The repository does not include an NGINX ingress or a Network Load
-Balancer, Fluent Bit or CloudWatch logs, or composite actions. Terraform
-roots are production, dev, and the state-bucket bootstrap. Build the cloud
-environment in the order in [docs/SETUP.md](docs/SETUP.md). The longer
-explanation is [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Quick start
-
-Install Docker with Docker Compose v2, then run:
+Install Docker with Docker Compose v2.
 
 ```sh
 git clone https://github.com/DeucesDevops/agribridge-project.git
@@ -133,11 +35,19 @@ cp .env.example .env
 docker compose up --build -d --wait
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open http://localhost:8080.
 
-Compose builds the web app and the API, starts PostgreSQL and Redis, and loads
-demonstration data. Copy `.env.example` to `.env` and change the passwords
-before you start.
+Compose builds the web app and the API, starts PostgreSQL and Redis, runs migrations and loads demonstration data. Replace the placeholder values in `.env` before you use the stack on a shared machine.
+
+`make local` is the same Compose command. `make stop` runs `docker compose down` and keeps the database volume.
+
+```sh
+docker compose ps
+docker compose logs -f api
+docker compose down
+```
+
+The web port defaults to `8080`. Set `WEB_LOCAL_PORT` to change it. Local PostgreSQL is published on `5433` unless `PG_LOCAL_PORT` is set.
 
 ### Demo accounts
 
@@ -147,70 +57,131 @@ before you start.
 | Buyer | `procurement@sahelmills.example` |
 | Agent | `agent@agribridge.example` |
 
-Locally the password is `SEED_PASSWORD` in `.env`. Compose sets
-`SEED_DEMO_DATA=true` and loads these accounts on startup, plus additional
-farmers, buyers, lots, and orders. Production leaves `SEED_DEMO_DATA` off.
-The production password is the `SEED_PASSWORD` key in Secrets Manager
-`agribridge/production`. Read that key when you sign in. Do not paste it into
-git, issues, or chat.
+The password for every demo account is the `SEED_PASSWORD` you set in `.env`. Compose sets `SEED_DEMO_DATA=true` and loads these accounts on startup, plus additional farmers, buyers, lots and orders. Seeding is skipped when the users table already has rows.
 
-### Useful commands
+## Run locally without Docker Compose
 
-```sh
-docker compose ps
-docker compose logs -f api
-docker compose down
-```
-
-The web port defaults to `8080`. Set `WEB_LOCAL_PORT` in `.env` to change it.
-Local PostgreSQL is published on `5433` unless `PG_LOCAL_PORT` is set.
-
-## Development and testing
-
-Use Node.js 22.
+Install Node.js 22, PostgreSQL 16 and Redis 7. Create a database the API can reach, then install dependencies:
 
 ```sh
 npm ci --prefix api
 npm ci --prefix frontend
+```
+
+Export the variables under [Environment variables](#environment-variables). For a local API process the usual database settings are host `localhost`, port `5432`, database `agribridge` and user `agribridge`. Set `PGPASSWORD`, `JWT_SECRET` and `SEED_PASSWORD` yourself.
+
+```sh
+npm run migrate --prefix api
+SEED_DEMO_DATA=true npm run seed --prefix api
+npm run dev --prefix api
+npm run dev --prefix frontend
+```
+
+The API listens on port `3000`. Vite listens on port `5173` and proxies `/api` to `http://localhost:3000` unless `API_URL` is set. Open http://localhost:5173.
+
+Redis is optional for local development. If it is not running, set `REDIS_ENABLED=false`. When Redis is enabled and unreachable, the API still reads PostgreSQL and `/readyz` reports the cache as degraded.
+
+`NODE_ENV=production` refuses to start without `JWT_SECRET`. Development starts without that variable.
+
+## Tests
+
+From the repository root, with dependencies installed:
+
+```sh
+npm test --prefix api
 npm run test:coverage --prefix api
+npm run lint --prefix api
+npm test --prefix frontend
 npm run test:coverage --prefix frontend
+npm run lint --prefix frontend
 npm run build --prefix frontend
 ```
 
-`make check` lints the Helm chart, checks Terraform formatting and runs the
-SonarQube coverage helper tests. It needs Helm, Terraform and Python 3.
+API unit tests cover pricing, credit eligibility, caching and order rules. Coverage thresholds apply to `api/src/domain`. Frontend tests cover display formatting.
 
-## Cloud delivery
+Integration tests talk to a real PostgreSQL database. Create an empty database (the default name is `agribridge_test`) and export `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` and `PGDATABASE` before:
 
-GitHub Actions lints and tests the app, scans for secrets and vulnerabilities,
-builds both images, writes a SBOM, and pushes them to Docker Hub. Production
-waits for a reviewer on the `production` environment, then commits that image
-tag. Argo CD installs it.
+```sh
+npm run test:integration --prefix api
+```
 
-kOps renders the cluster and Terraform creates it, the zone, the certificate,
-the IAM roles and the platform charts. `scripts/bootstrap-state.sh` creates
-the Terraform state bucket, which Terraform needs before it can start. The
-kOps state bucket is separate and is managed by Terraform. Images are
-published to Docker Hub. The exact commands are in [docs/SETUP.md](docs/SETUP.md).
+## Environment variables
 
-| Guide | Contents |
+Names only. Set the values in a gitignored `.env` or in the process environment. Do not commit them.
+
+### Compose file (`.env`)
+
+| Name | Purpose |
 |---|---|
-| [Setup](docs/SETUP.md) | Stage-by-stage build, from an empty AWS account to production |
-| [Pipeline](docs/PIPELINE.md) | Each job, and the GitHub settings it needs |
-| [Architecture](docs/ARCHITECTURE.md) | What runs where |
-| [SonarQube](sonarqube/README.md) | Optional local code-quality server |
+| `PGPASSWORD` | PostgreSQL password for the Compose database and the API |
+| `JWT_SECRET` | Signs the session cookie. Required because Compose runs the API with `NODE_ENV=production` |
+| `SEED_PASSWORD` | Password stored for the demo accounts |
+| `IMAGE_TAG` | Tag used when Compose names the built images |
+| `APP_VERSION` | Build arg recorded on `/version` |
+| `GIT_SHA` | Build arg recorded on `/version` |
+| `BUILD_DATE` | Build arg recorded on `/version` |
+| `API_IMAGE` | Image name for the API |
+| `WEB_IMAGE` | Image name for the web app |
+| `WEB_LOCAL_PORT` | Host port published for the web app |
+| `PG_LOCAL_PORT` | Host port published for PostgreSQL |
+
+### API process
+
+| Name | Purpose |
+|---|---|
+| `NODE_ENV` | `development`, `test` or `production` |
+| `PORT` | HTTP port. Default `3000` |
+| `LOG_LEVEL` | `debug`, `info`, `warn` or `error` |
+| `PGHOST` | PostgreSQL host |
+| `PGPORT` | PostgreSQL port |
+| `PGDATABASE` | Database name |
+| `PGUSER` | Database user |
+| `PGPASSWORD` | Database password |
+| `PGSSL` | Enable TLS to PostgreSQL when true |
+| `PG_POOL_MAX` | Pool maximum |
+| `PG_POOL_MIN` | Pool minimum |
+| `PG_CONNECT_TIMEOUT_MS` | Connection timeout |
+| `PG_IDLE_TIMEOUT_MS` | Idle client timeout |
+| `PG_STATEMENT_TIMEOUT_MS` | Statement timeout |
+| `REDIS_ENABLED` | Turn the cache on or off |
+| `REDIS_URL` | Redis connection URL |
+| `REDIS_REQUIRED` | When true, `/readyz` fails if Redis is down |
+| `CACHE_TTL_SECONDS` | Cache lifetime |
+| `JWT_SECRET` | Session signing secret. Required in production |
+| `TOKEN_TTL_SECONDS` | Session lifetime |
+| `COOKIE_NAME` | Session cookie name |
+| `COOKIE_SECURE` | Set the cookie `Secure` flag |
+| `BCRYPT_ROUNDS` | Password hash cost |
+| `SHUTDOWN_GRACE_MS` | How long in-flight requests may finish on shutdown |
+| `RUN_MIGRATIONS` | Apply SQL migrations on startup |
+| `SEED_DEMO_DATA` | Load demo data on startup when the database is empty |
+| `SEED_PASSWORD` | Password used while seeding |
+| `TRUST_PROXY` | Honor `X-Forwarded-For` from a reverse proxy |
+| `APP_VERSION` | Reported by `/version` |
+| `GIT_SHA` | Reported by `/version` |
+| `BUILD_DATE` | Reported by `/version` |
+| `IMAGE_TAG` | Reported by `/version` |
+
+### Frontend and tests
+
+| Name | Purpose |
+|---|---|
+| `API_URL` | Vite dev-server proxy target for `/api` |
+| `API_UPSTREAM` | Host the NGINX image proxies to. Default `api:3000` |
+| `JUNIT_FILE` | Where Vitest writes a JUnit report |
+
+Copy `api/.env.example` when you run the API on the host. Copy the root `.env.example` when you use Compose.
 
 ## Repository layout
 
-| Directory | Purpose |
+| Path | Purpose |
 |---|---|
-| `frontend/`, `api/` | Application source and tests |
-| `.github/workflows/cicd.yaml` | The only delivery workflow |
-| `kops/` | kOps cluster spec |
-| `terraform/` | Modules, production and dev roots, and the state-bucket bootstrap |
-| `helm/agribridge/` | Application chart, including the production backup |
-| `helm/agribridge-application/` | Argo CD Application for that chart |
-| `terraform/modules/platform/values/` | Storage class and observability Helm values |
-| `scripts/` | State bucket, apply, restore and teardown |
-| `sonarqube/` | Optional local SonarQube |
-| `docs/` | Setup, pipeline and architecture |
+| `frontend/` | React application, Vite config, NGINX template and Dockerfile |
+| `api/` | Express API, SQL migrations, demo seed and tests |
+| `docker-compose.yml` | Local PostgreSQL, Redis, API and web app |
+| `docs/ARCHITECTURE.md` | How a request moves through the application |
+| `Makefile` | `make local` and `make stop` |
+
+## Further reading
+
+Request paths, health checks and the data model are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

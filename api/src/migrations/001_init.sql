@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS order_events (
     from_status TEXT,
     to_status   TEXT        NOT NULL,
     actor_id    UUID        REFERENCES users (id) ON DELETE SET NULL,
-    request_id  TEXT,                            -- correlates with the Loki logs
+    request_id  TEXT,                            -- matches the API request log
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

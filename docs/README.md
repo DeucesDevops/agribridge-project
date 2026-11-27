@@ -1,10 +1,7 @@
-# Guides
+# Application notes
 
 | Guide | Purpose |
 |---|---|
-| [SETUP.md](SETUP.md) | Build the local app, the kOps cluster and the pipeline, in order |
-| [PIPELINE.md](PIPELINE.md) | What each CI/CD job does, and which GitHub settings it needs |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Request path, GitOps pipeline, cluster, and the diagram |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Request path, API surface and the database |
 
-Start with the root [README](../README.md) if you only want the application running
-on your machine.
+Start with the root [README](../README.md) to run the application.

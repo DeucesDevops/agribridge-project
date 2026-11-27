@@ -1,9 +1,0 @@
-region            = "us-east-1"
-zone_name         = "dev.agribridge.deuces.dev"
-cluster_name      = "k8s.dev.agribridge.deuces.dev"
-kops_state_bucket = "kops-state-dev-607"
-discovery_bucket  = "agribridge-oidc-dev"
-backup_bucket     = "agribridge-backups-dev"
-github_repository = "DeucesDevops/agribridge-project"
-github_reviewer   = "DeucesDevops"
-install_platform  = false

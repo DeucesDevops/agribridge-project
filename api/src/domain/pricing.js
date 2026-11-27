@@ -2,8 +2,7 @@
  * Pricing rules for AgriBridge produce lots.
  *
  * Pure functions only - no database, no clock, no I/O. That is deliberate:
- * this is the business logic that the unit tests in test/unit cover, and the
- * coverage gate in the pipeline depends on it being testable in isolation.
+ * this is the business logic that the unit tests in test/unit cover.
  */
 
 /**
