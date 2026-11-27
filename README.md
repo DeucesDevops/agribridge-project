@@ -179,8 +179,15 @@ Copy `api/.env.example` when you run the API on the host. Copy the root `.env.ex
 | `frontend/` | React application, Vite config, NGINX template and Dockerfile |
 | `api/` | Express API, SQL migrations, demo seed and tests |
 | `docker-compose.yml` | Local PostgreSQL, Redis, API and web app |
-| `docs/ARCHITECTURE.md` | How a request moves through the application |
-| `Makefile` | `make local` and `make stop` |
+| `helm/agribridge` | Application chart. Argo CD syncs `values-production.yaml` |
+| `terraform/` | State bootstrap, modules, and the production root |
+| `kops/cluster.yaml` | kOps cluster spec for `k8s.agribridge.deuces.dev` |
+| `platform/` | Argo CD, monitoring, and External Secrets values |
+| `docs/ARCHITECTURE.md` | How a request moves through the application and the cluster |
+| `docs/SETUP.md` | Local setup, then the cloud rebuild |
+| `Makefile` | `local`, `stop`, `validate`, `plan`, `apply`, `teardown`, and `test` |
+
+Cloud setup starts with `scripts/bootstrap-state.sh`. See [docs/SETUP.md](docs/SETUP.md). `make plan` and `make apply` talk to AWS. `make validate` does not.
 
 ## Further reading
 

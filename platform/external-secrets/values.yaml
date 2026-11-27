@@ -1,0 +1,6 @@
+# External Secrets operator. Terraform adds the IRSA role annotation.
+# Do not put secret values in this file.
+installCRDs: true
+serviceAccount:
+  create: true
+  name: external-secrets

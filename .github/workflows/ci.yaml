@@ -1,0 +1,132 @@
+# AgriBridge CI
+#
+# This is the entry point. Jobs run in the same order as the previous
+# single workflow, and a failure stops the stages after it:
+#   lint and test -> security -> terraform -> build, scan, SBOM, push -> deploy
+#
+# Security, Terraform, and Build and push can also be started on their own
+# with workflow_dispatch. A pull request or a push runs this workflow only,
+# so the later stages still wait.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint-and-test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:16.11-bookworm
+        env:
+          POSTGRES_USER: agribridge
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: agribridge_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agribridge"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGUSER: agribridge
+      PGPASSWORD: integration-only
+      PGDATABASE: agribridge_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            frontend/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci --prefix api
+          npm ci --prefix frontend
+      - name: Lint
+        run: |
+          npm run lint --prefix api -- --max-warnings=0
+          npm run lint --prefix frontend -- --max-warnings=0
+      - name: Unit tests and coverage
+        run: |
+          JUNIT_FILE=reports/junit-unit.xml npm run test:coverage --prefix api
+          JUNIT_FILE=reports/junit.xml npm run test:coverage --prefix frontend
+      - name: API integration tests
+        run: JUNIT_FILE=reports/junit-integration.xml npm run test:integration --prefix api
+      - name: Summarise test results
+        if: always()
+        run: python3 scripts/junit_summary.py api/reports frontend/reports >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: API and web tests
+          path: |
+            api/reports/junit-*.xml
+            frontend/reports/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+          fail-on-empty: false
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit
+          path: |
+            api/reports/junit-*.xml
+            frontend/reports/junit.xml
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-api
+          path: api/coverage/lcov.info
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-frontend
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
+
+  security:
+    name: Security
+    needs: lint-and-test
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yaml
+    secrets: inherit
+
+  terraform:
+    name: Terraform
+    needs: security
+    permissions:
+      contents: read
+    uses: ./.github/workflows/terraform.yaml
+
+  build:
+    name: Build and push
+    needs: terraform
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-push.yaml
+    secrets: inherit

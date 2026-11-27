@@ -1,0 +1,58 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /api
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/bootstrap
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/environments/production
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/environments/dev
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/network
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/cluster
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/dns
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/storage
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/identity
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /terraform/modules/platform
+    schedule:
+      interval: weekly

@@ -1,0 +1,55 @@
+api:
+  repository: docker.io/macroni607/agribridge-api
+  tag: local
+  replicas: 1
+web:
+  repository: docker.io/macroni607/agribridge-web
+  tag: local
+  replicas: 1
+# Public hostname. values-production.yaml sets the live name.
+hostname: production.agribridge.deuces.dev
+# ACM certificate ARN from `terraform output certificate_arn`. Empty keeps the ingress on HTTP.
+certificateArn: ""
+region: us-east-1
+secretName: agribridge/production
+monitoring:
+  enabled: true
+config:
+  NODE_ENV: production
+  PORT: "3000"
+  LOG_LEVEL: info
+  TRUST_PROXY: "true"
+  SHUTDOWN_GRACE_MS: "10000"
+  PGPORT: "5432"
+  PGDATABASE: agribridge
+  PGUSER: agribridge
+  PGSSL: "false"
+  PG_POOL_MAX: "10"
+  PG_POOL_MIN: "0"
+  PG_CONNECT_TIMEOUT_MS: "5000"
+  PG_IDLE_TIMEOUT_MS: "30000"
+  PG_STATEMENT_TIMEOUT_MS: "10000"
+  REDIS_ENABLED: "true"
+  REDIS_REQUIRED: "false"
+  CACHE_TTL_SECONDS: "30"
+  TOKEN_TTL_SECONDS: "28800"
+  COOKIE_NAME: agribridge_session
+  COOKIE_SECURE: "true"
+  BCRYPT_ROUNDS: "12"
+  RUN_MIGRATIONS: "true"
+  SEED_DEMO_DATA: "false"
+postgres:
+  image: postgres:16.11-bookworm
+  storageClass: gp3
+  size: 20Gi
+# values-production.yaml turns the dump on.
+# CI sets bucket and roleArn from the GitHub variables Terraform publishes.
+backup:
+  enabled: false
+  schedule: "15 2 * * *"
+  bucket: ""
+  roleArn: ""
+  prefix: ""
+  image: public.ecr.aws/aws-cli/aws-cli:2.31.38
+redis:
+  image: redis:7.4.7-alpine

@@ -1,0 +1,29 @@
+# PrometheusRule spec loaded by the platform module into kube-prometheus-stack.
+# The rules page when the short window breaks observability/slos/api.yaml.
+groups:
+  - name: agribridge-api.slo
+    rules:
+      - alert: AgriBridgeAPIAvailability
+        expr: |
+          (
+            sum(rate(http_requests_total{service="agribridge-api",status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{service="agribridge-api"}[5m]))
+          ) > 0.005
+        for: 10m
+        labels:
+          severity: page
+          slo: availability
+        annotations:
+          summary: AgriBridge API availability is below 99.5%.
+          description: More than 0.5% of API requests returned 5xx for 10 minutes. The 30 day objective is in observability/slos/api.yaml.
+      - alert: AgriBridgeAPILatency
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="agribridge-api"}[5m]))) > 0.4
+        for: 10m
+        labels:
+          severity: page
+          slo: latency
+        annotations:
+          summary: AgriBridge API p95 latency is above 400ms.
+          description: The 95th percentile of API latency has been above 400ms for 10 minutes. The objective is in observability/slos/api.yaml.

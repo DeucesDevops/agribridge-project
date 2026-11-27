@@ -1,0 +1,84 @@
+# Production approval gate. After the images are on Docker Hub, this job
+# waits for the GitHub environment named "production", then commits the image
+# tag into helm/agribridge/values-production.yaml. The commit message contains
+# [skip ci], and the author is DeucesDevops. Argo CD tracks main and syncs
+# that commit. This job does not run helm upgrade and does not call AWS.
+
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: Image tag to commit. This is the commit SHA that built the images.
+        required: true
+        type: string
+      api_image:
+        description: API image repository, without a tag.
+        required: true
+        type: string
+      web_image:
+        description: Web image repository, without a tag.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  deploy-production:
+    name: Publish production image tags
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      API_IMAGE_REPOSITORY: ${{ inputs.api_image }}
+      WEB_IMAGE_REPOSITORY: ${{ inputs.web_image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Commit the approved image tag
+        run: |
+          # Author and committer are the repository owner. [skip ci] stops this
+          # commit from building the same images again.
+          git config user.name "DeucesDevops"
+          git config user.email "macroni607@gmail.com"
+          values="helm/agribridge/values-production.yaml"
+          for _ in 1 2 3; do
+            git fetch origin main
+            git checkout -B main origin/main
+            current="$(python3 -c 'import pathlib,re; text=pathlib.Path("'"${values}"'").read_text(); match=re.search(r"(?m)^  tag: (\S+)", text); print(match.group(1) if match else "")')"
+            if [ "${current}" = "${IMAGE_TAG}" ]; then
+              echo "Production already records ${IMAGE_TAG}."
+              exit 0
+            fi
+            if git cat-file -e "${current}^{commit}" 2>/dev/null && git merge-base --is-ancestor "${IMAGE_TAG}" "${current}"; then
+              echo "Production already records ${current}, which contains ${IMAGE_TAG}. Leaving it."
+              exit 0
+            fi
+            python3 scripts/update_production_images.py \
+              --file "${values}" \
+              --api-repository "${API_IMAGE_REPOSITORY}" \
+              --web-repository "${WEB_IMAGE_REPOSITORY}" \
+              --tag "${IMAGE_TAG}"
+            git add "${values}"
+            if git diff --cached --quiet; then
+              echo "Production values already match ${IMAGE_TAG}."
+              exit 0
+            fi
+            git commit -m "deploy: set production images to ${IMAGE_TAG} [skip ci]"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push rejected. Retrying against the new main."
+            git reset --hard origin/main
+          done
+          echo "Could not push the production image tag."
+          exit 1

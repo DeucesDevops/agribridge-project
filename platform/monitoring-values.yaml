@@ -1,0 +1,103 @@
+# Helm values for the monitoring releases.
+# The platform module passes each key to its chart:
+#   prometheus -> kube-prometheus-stack (Prometheus and Grafana)
+#   loki       -> Loki
+#   promtail   -> Promtail
+# Hostname, certificate, and the Grafana admin password are set by Terraform.
+# Calico pod IPs are not routable from the VPC, so Grafana is a NodePort and
+# the load balancer uses instance targets.
+
+prometheus:
+  alertmanager:
+    enabled: false
+  grafana:
+    service:
+      # Calico pod IPs are not routable from the VPC. The ALB uses instance targets,
+      # so Grafana is a NodePort. terraform/modules/platform sets the same type.
+      type: NodePort
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 400Mi
+    additionalDataSources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki-gateway.monitoring.svc.cluster.local
+        isDefault: false
+  prometheus:
+    prometheusSpec:
+      retention: 2d
+      resources:
+        requests:
+          cpu: 100m
+          memory: 400Mi
+        limits:
+          memory: 1200Mi
+      # Scrape every ServiceMonitor, including the application chart.
+      serviceMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelectorNilUsesHelmValues: false
+      ruleSelectorNilUsesHelmValues: false
+loki:
+  # Small single-process Loki. It uses the disk on the pod, not S3.
+  deploymentMode: SingleBinary
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    useTestSchema: true
+  singleBinary:
+    replicas: 1
+    persistence:
+      storageClass: gp3
+      size: 10Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  minio:
+    enabled: false
+  backend:
+    replicas: 0
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  ingester:
+    replicas: 0
+  querier:
+    replicas: 0
+  queryFrontend:
+    replicas: 0
+  queryScheduler:
+    replicas: 0
+  distributor:
+    replicas: 0
+  compactor:
+    replicas: 0
+  indexGateway:
+    replicas: 0
+  bloomCompactor:
+    replicas: 0
+  bloomGateway:
+    replicas: 0
+promtail:
+  config:
+    clients:
+      - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 200Mi

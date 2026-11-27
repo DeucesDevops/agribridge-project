@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: agribridge
+  namespace: {{ .Values.argocdNamespace | quote }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: {{ .Values.chartPath | quote }}
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-production.yaml
+      parameters:
+        - name: hostname
+          value: {{ .Values.hostname | quote }}
+          forceString: true
+        - name: region
+          value: {{ .Values.region | quote }}
+          forceString: true
+        - name: certificateArn
+          value: {{ .Values.certificateArn | quote }}
+          forceString: true
+        - name: backup.bucket
+          value: {{ .Values.backupBucket | quote }}
+          forceString: true
+        - name: backup.roleArn
+          value: {{ .Values.backupRoleArn | quote }}
+          forceString: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.destinationNamespace | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

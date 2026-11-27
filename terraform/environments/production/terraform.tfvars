@@ -1,0 +1,10 @@
+region            = "us-east-1"
+zone_name         = "agribridge.deuces.dev"
+cluster_name      = "k8s.agribridge.deuces.dev"
+kops_state_bucket = "kops-state-607"
+discovery_bucket  = "agribridge-oidc-237258628535"
+github_repository = "DeucesDevops/agribridge-project"
+github_reviewer   = "DeucesDevops"
+
+# First apply. The platform apply sets this to true after kops export kubeconfig.
+# install_platform = false

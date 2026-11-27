@@ -1,0 +1,20 @@
+# Service level objectives for the AgriBridge API in agribridge-production.
+# Metric names match api/src/metrics.js. The latency buckets in that file are
+# built around the 400ms objective. Alerts live in observability/alerts/api.yaml.
+service: agribridge-api
+namespace: agribridge-production
+window: 30d
+objectives:
+  - name: availability
+    description: At least 99.5% of HTTP requests are not 5xx.
+    target: 0.995
+    query: |
+      sum(rate(http_requests_total{service="agribridge-api",status!~"5.."}[30d]))
+      /
+      sum(rate(http_requests_total{service="agribridge-api"}[30d]))
+  - name: latency
+    description: The 95th percentile of request latency stays under 400ms.
+    target: 0.4
+    unit: seconds
+    query: |
+      histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="agribridge-api"}[30d])))
